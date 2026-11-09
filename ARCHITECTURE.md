@@ -2,23 +2,20 @@
 
 ## The idea
 
-Agent-written code loses coherence because each agent sees one slice and nobody holds the whole. This plugin puts
-one idea around every agent: **the shape is set first, each piece must build on it, and what comes back is checked
-for fit.** That gives four moments, each with one job:
+Agent-written code loses coherence because each agent sees one slice and nobody holds the whole. This plugin checks
+what comes back for fit, and it does not write code. It gives that check three moments, each with one job:
 
-1. **Before a subagent starts:** the gate refuses a coding brief that has no spine to build on.
-2. **After code is written, by rule:** checks catch what needs no judgment (cycles, duplication, flat folders, a missing architecture doc).
-3. **After code is written, by judgment:** a reviewer reads it as a newcomer would.
-4. **Whenever the owner corrects a design:** the taste skill records it, so the coder and the reviewer follow it next time.
+1. **By rule:** checks catch what needs no judgment (cycles, duplication, flat folders, a missing architecture doc).
+2. **By judgment:** a reviewer reads the code as a newcomer would, holds it to the design rules, and a pull request is refused until the commit at HEAD has had that review.
+3. **Whenever the owner corrects a design:** the taste skill records it, so the reviewer, and anything that reads `coherence taste`, follows it next time.
 
 | Moment | Files |
 | --- | --- |
-| Gate | `hooks/hooks.json`, `agents/coder.md`, `src/commands/gate.ts` |
 | Rules | `src/commands/check.ts`, `src/checks/` |
-| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/pr-gate.ts`, `taste/` |
-| Learning | `skills/taste/SKILL.md`, `src/commands/taste.ts`, `src/lib/taste.ts` |
+| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `rules/design.md`, `src/commands/rules.ts`, `src/commands/pr-gate.ts`, `hooks/hooks.json` |
+| Learning | `skills/taste/SKILL.md`, `src/commands/taste.ts`, `src/lib/taste.ts`, `taste/` |
 
-Evals measure whether moments 3 and 4 actually do what they should. `evals/` is run by Claude Code's own
+Evals measure whether moments 2 and 3 actually do what they should. `evals/` is run by Claude Code's own
 `claude plugin eval`: it is case files (fixture repos and graders) with no runner of ours.
 
 ## What it is made of
@@ -43,11 +40,15 @@ answerable for according to each finding's scope, prints them, and exits `Exit.f
 ## One review, end to end
 
 `skills/review/SKILL.md` drives a review of a branch. It first runs `coherence check --base <ref>`; each finding is
-must-fix, so no reader spends attention on what a rule can catch. Then the `readability-reviewer` subagent reads the code
-as a newcomer would. The skill reports its verdict and findings, then runs `coherence pr-gate pass`, which stores the HEAD commit for the branch in git config, and
-the `pr-gate` hook refuses `gh pr create` unless HEAD is still that commit. When the owner accepts or rejects a finding, or corrects a design in conversation, the
-`taste` skill records one general line through `coherence taste`, and the reader reads it next time. At 40 lines the
-same skill condenses them into rules and archives the originals.
+must-fix, so the reader spends no attention on what a rule can catch. Then the `readability-reviewer` subagent, which
+runs on Sonnet, runs `coherence taste` and `coherence rules` (the latter prints `rules/design.md` through
+`readPluginFile`) and reads the code as a newcomer would. The skill reports its verdict and findings, then runs
+`coherence pr-gate pass`, which stores the HEAD commit for the branch in git config. The `pr-gate` hook runs before
+`gh pr create` and compares HEAD with that stored commit. If the branch has no stored commit, or HEAD has moved on, it
+refuses and says whether the branch was never reviewed or commits landed after the review. When the owner accepts or
+rejects a finding, or corrects a design in conversation, the `taste` skill records one general line through
+`coherence taste`, and the reader reads it next time. At 40 lines the same skill condenses them into rules and archives
+the originals.
 
 ## One correction, end to end
 
@@ -55,24 +56,6 @@ The owner says something like "stop adding barrel files." The `taste` skill fire
 preference isn't already known, and runs `coherence taste add` with one general line that says what the owner wants.
 `lib/taste.ts` appends it, dated, to `taste-log.md` in the owner's config folder, outside the plugin so it survives an
 update. The next `coherence taste` prints the shipped style, then the condensed rules, then the log, and that is what
-the coder and the reviewer read. At 40 entries the command says the log is full, and the skill writes new rules from
+the reviewer reads. At 40 entries the command says the log is full, and the skill writes new rules from
 the old rules and the entries. `coherence taste condense` replaces `taste-rules.md` and moves the entries to
 `taste-archive.md`.
-
-## One coder spawn, end to end
-
-When the main agent spawns a `coder` subagent, Claude Code runs the PreToolUse hook in `hooks/hooks.json`, which calls
-`bin/coherence gate` (the one way into the CLI) with the hook JSON on stdin. `GateCommand` ignores every other subagent type. For a coder it reads the
-five brief fields and opens a `Repo` from each spine path's own folder, because the
-target repo can differ from the session's, then asks `repo.isCommitted`. Any problem comes back as one `deny` naming
-all of them, telling the agent to write and commit the spine first; otherwise the gate prints nothing and the spawn
-proceeds.
-
-The brief fields are defined once, in `FIELDS` in `src/commands/gate.ts`, and the same meanings are in the description of
-`agents/coder.md`, which is the text read before spawning:
-
-- **Idea:** how the thing works and what it is made of, in a few sentences.
-- **Spine:** committed paths of the base shapes and worked example to build on, or the surrounding code for a change inside an existing shape.
-- **Slot:** the one piece this agent builds.
-- **Reuse:** the existing helpers and libraries to use.
-- **Done:** the condition that proves it finished.

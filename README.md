@@ -1,46 +1,30 @@
 # coherence
 
-AI coding agents write code that works and doesn't look good: too many files, helpers written next to ones that already exist, a simple task overbuilt, and no idea holding it together. Subagents make it worse, because each one starts cold and sees one slice.
+AI coding agents write code that works and doesn't look good: too many files, helpers written next to ones that already exist, a simple task overbuilt, and no idea holding it together.
 
-coherence is a Claude Code plugin that makes agent-written code read as if one person wrote it. One mind sets the shape first, and everything after builds on it.
+coherence is a Claude Code plugin that checks whether agent-written code reads as if one person wrote it. It does not write code. It runs deterministic checks, has one reader judge the rest, remembers your design preferences, prints the design rules, and gates pull requests on a review.
 
 Early, version 0.1. It's small, and the limits are listed below.
 
 ## What it looks like
 
-A **brief** is the prompt the main agent hands a coding subagent. The **spine** is the committed base shapes and one running example that new code must build on.
+Before merging, `/coherence:review main` runs the rule checks, then a reader that follows one real flow through the code the way a new engineer would. It gives a verdict: merge, fix first or rework, and why, with each must-fix finding placed and given a concrete fix. Tell it a finding is wrong and it records that for next time.
 
-Ask `coherence:coder` to "add a retry helper" with no spine, and a hook stops it before it writes anything:
-
-```
-Brief refused by coherence: the Idea field is missing or empty; the Spine field is missing or empty;
-the Slot field is missing or empty; the Reuse field is missing or empty; the Done field is missing or empty.
-Write and commit the spine first (the base shapes and a worked example the new code must build on),
-then brief again with all five fields, each starting a line...
-```
-
-A brief that gets through says what the new code is building on:
+Opening a pull request before that review, or after more commits have landed on top of it, is refused:
 
 ```
-Idea: every outbound call goes through one client, and retries live there and nowhere else.
-Spine: src/lib/client.ts, src/lib/weather-client.ts
-Slot: src/lib/calendar-client.ts
-Reuse: the backoff in src/lib/client.ts
-Done: the calendar client's tests pass and it adds no new retry code
+PR refused by coherence: commits landed on branch feature after its coherence review. Run /coherence:review <base>, fix what is real, then open the PR again. ...
 ```
-
-Before merging, `/coherence:review main` gives a verdict: merge, fix first or rework, and why. Tell it a finding is wrong and it records that for next time.
 
 ## How it works
 
-The main agent states the idea and commits the spine. Subagents then fill slots in dependency order. A review comes last.
-
 | Moment | When | What happens |
 |---|---|---|
-| Gate | Before a subagent codes | A hook refuses a `coherence:coder` brief that doesn't name its Idea, Spine, Slot, Reuse and Done. The coder then reads the spine and your taste first, and builds on what exists. |
 | Rules | After code is written | `coherence check` catches what needs no judgment. |
-| Judgment | Before merging | `/coherence:review <base>` runs the rules, then the readability reviewer. A hook refuses `gh pr create` unless HEAD is the commit that had this review. |
-| Learning | Whenever you correct a design | The `coherence:taste` skill records your preference in one line, so later code and reviews follow it. |
+| Judgment | Before merging | `/coherence:review <base>` runs the rules, then the readability reviewer, which runs on Sonnet and holds the code to `coherence rules` and your taste. A hook refuses `gh pr create` unless HEAD is the commit that had this review. |
+| Learning | Whenever you correct a design | The `coherence:taste` skill records your preference in one line, so later reviews follow it. |
+
+The design rules live in `rules/design.md`. `coherence rules` prints them, so whatever writes the code can read the standard the reviewer applies.
 
 ### The rule checks
 
@@ -55,7 +39,7 @@ Everything else is left to the reviewer's judgment: is there one idea, are simil
 
 ### Taste
 
-Taste is text the coder and the reviewer read before they work. Nothing is trained.
+Taste is text the reviewer, and anything that writes code, reads before working. Nothing is trained.
 
 - `taste/style.md` is the default opinion the plugin ships with. "The owner" in it means you.
 - `~/.config/coherence/taste-log.md` is your running log, one dated line per preference. Say "drop that" to undo the newest line.
@@ -73,8 +57,8 @@ claude plugin install coherence@coherence
 Then add something like this to your `CLAUDE.md`, because it's what makes the agent use the plugin:
 
 ```markdown
-Send all coding work to `coherence:coder`. Before spawning one, state the idea in ARCHITECTURE.md and commit the spine
-yourself. Before merging any non-trivial change, run `/coherence:review <base>` and fix what it finds that is real.
+Before merging any non-trivial change, run `/coherence:review <base>` and fix what it finds that is real.
+Before writing code, read `coherence rules` and `coherence taste`.
 Whenever I reject or correct a design choice, use the `coherence:taste` skill to record it.
 ```
 
@@ -84,7 +68,6 @@ Whenever I reject or correct a design choice, use the `coherence:taste` skill to
 
 ```
 coherence check [--base <ref>]            run the rule checks
-coherence gate                            the hook on coder spawns
 coherence pr-gate [pass]                  the hook on gh pr create; pass records a review
 coherence rules                           print the design rules
 coherence taste                           print your taste
@@ -95,10 +78,9 @@ coherence taste condense                  replace the rules with stdin and archi
 
 ## What it can't do
 
-- The gate proves a spine was named, not that it's any good. It only covers `coherence:coder`, so your `CLAUDE.md` has to send coding work there.
 - The PR hook only sees PRs Claude opens with `gh pr create`. It ties the review to the commit at HEAD, so later commits need a new review, and Claude can mark a trivial change as passed.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
-- The evals measure the reviewer and the taste skill, on tiny samples. They don't show whether the coder's output is better. See `evals/baseline.md`.
+- The evals measure the reviewer and the taste skill, on tiny samples. They were last run with the reviewer on Opus, before it moved to Sonnet. See `evals/baseline.md`.
 - The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools, but it does have Bash, so be careful reviewing code from strangers.
 
 ## How well it works

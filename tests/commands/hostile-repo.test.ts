@@ -3,11 +3,8 @@ import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
-import { GateCommand } from "../../src/commands/gate.ts";
 import { setEnv, tempFolder } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
-
-const CODER_BRIEF = (spine: string) => `Idea: one client\nSpine: ${spine}\nSlot: b.ts\nReuse: a.ts\nDone: tests pass`;
 
 /** Turns `folder`, already inside a repo, into a repository of its own whose config runs a command when git refreshes it. */
 function plantRepositoryThatRuns(folder: string, command: string, file: string) {
@@ -21,16 +18,12 @@ function plantRepositoryThatRuns(folder: string, command: string, file: string) 
   git(folder, "--git-dir=.", "config", "core.fsmonitor", command);
 }
 
-test("a repository planted in the spine's folder cannot make the coder gate run its command", async () => {
-  const repo = await tempRepo({ "src/lib/client.ts": "export {};\n" });
+test("a repository planted in the folder the review starts from cannot make git run its command", async () => {
+  const repo = await tempRepo({ "ARCHITECTURE.md": "# a\n", "src/lib/client.ts": "export {};\n" });
   const ran = join(tempFolder(), "RAN");
   plantRepositoryThatRuns(join(repo.root, "src/lib"), `touch ${ran}`, "client.ts");
 
-  const stdin = JSON.stringify({
-    cwd: repo.root,
-    tool_input: { subagent_type: "coherence:coder", prompt: CODER_BRIEF("src/lib/client.ts") },
-  });
-  await new GateCommand().execute(fakeInvocation(repo.root, [], stdin));
+  await new CheckCommand().execute(fakeInvocation(join(repo.root, "src/lib"), ["--base", "main"])).catch(() => undefined);
 
   assert.equal(existsSync(ran), false);
 });

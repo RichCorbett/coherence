@@ -2,16 +2,6 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/coherence\" gate",
-            "timeout": 30
-          }
-        ]
-      },
-      {
         "matcher": "Bash",
         "hooks": [
           {

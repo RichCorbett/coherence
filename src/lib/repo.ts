@@ -44,14 +44,6 @@ export class Repo {
     return this.gitPaths(["diff", "--name-only", "-z", "--diff-filter=d", "--end-of-options", `${base}...HEAD`]);
   }
 
-  /** True when `path` is tracked and has no uncommitted changes. */
-  async isCommitted(path: string): Promise<boolean> {
-    const tracked = await git(["ls-files", "--error-unmatch", "--", path], this.root);
-    if (tracked.code !== 0) return false;
-    const changed = await git(["diff", "--quiet", "HEAD", "--", path], this.root);
-    return changed.code === 0;
-  }
-
   /** A repo path usable from any working folder. Being absolute, it also cannot be read as an option. */
   absolutePath(path: string): string {
     return join(this.root, path);
