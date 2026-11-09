@@ -10,4 +10,3 @@
 - **Don't overcomplicate.** No file that only makes sense beside another (merge it), no abstraction without two real uses, no configuration nobody changes. A simple task stays simple: if the solution is bigger than the problem, cut it. A new file needs a reason you can state in one sentence. Use a well-known pattern by name where it fits.
 - **Write to be read.** The important thing comes first. Guard clauses, then the work, top to bottom. Edge cases don't crowd out the main path. Short files, and names over comments.
 - **Comments explain why, in plain words.** A spec or ticket reference can follow the explanation, never replace it. Don't restate the code.
-- **Keep ARCHITECTURE.md true.** If your change alters how a request flows through the modules, update it in the same commit.

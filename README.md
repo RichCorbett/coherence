@@ -33,7 +33,6 @@ These catch what needs no judgment, so a reviewer doesn't have to:
 - **cycles:** import cycles, type-only ones included.
 - **duplicates:** copy-pasted blocks of code.
 - **flat-folder:** more than 15 source files directly in one folder.
-- **architecture-doc:** no `ARCHITECTURE.md`.
 
 Everything else is left to the reviewer's judgment: is there one idea, are similar things built the same way, were wheels reinvented, and is the solution bigger than the problem.
 

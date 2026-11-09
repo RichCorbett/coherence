@@ -1,7 +1,7 @@
 import type { Repo } from "./repo.ts";
 
-/** What a finding is about, which decides when a branch is answerable for it: the file changed, a file directly in the folder changed, or always. */
-export type Scope = "file" | "folder" | "repo";
+/** What a finding is about, which decides when a branch is answerable for it: the file changed, or a file directly in the folder changed. */
+export type Scope = "file" | "folder";
 
 /** `path` is always relative to the repo root, whatever tool found the problem. */
 export type Finding = { check: string; path: string; line?: number; scope: Scope; message: string };

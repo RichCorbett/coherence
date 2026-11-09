@@ -19,7 +19,7 @@ function plantRepositoryThatRuns(folder: string, command: string, file: string) 
 }
 
 test("a repository planted in the folder the review starts from cannot make git run its command", async () => {
-  const repo = await tempRepo({ "ARCHITECTURE.md": "# a\n", "src/lib/client.ts": "export {};\n" });
+  const repo = await tempRepo({ "src/lib/client.ts": "export {};\n" });
   const ran = join(tempFolder(), "RAN");
   plantRepositoryThatRuns(join(repo.root, "src/lib"), `touch ${ran}`, "client.ts");
 
@@ -37,7 +37,7 @@ test("a tool planted above the shared temp folder is never run", async (t) => {
     writeFileSync(join(planted, name), `#!/bin/sh\ntouch ${ran}\necho '{}'\n`);
     chmodSync(join(planted, name), 0o755);
   }
-  const repo = await tempRepo({ "ARCHITECTURE.md": "# a\n", "src/a.ts": "export const a = 1;\n" });
+  const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n" });
   setEnv(t, { TMPDIR: sharedTemp });
 
   // A planted tool's output can make the check fail, and all that matters here is whether it ran.

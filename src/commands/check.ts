@@ -3,7 +3,6 @@ import { parseArgs } from "node:util";
 import type { BaseCheck, Finding } from "../lib/base-check.ts";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
-import { ArchitectureDocCheck } from "../checks/architecture-doc.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
 import { FlatFolderCheck } from "../checks/flat-folder.ts";
@@ -12,7 +11,6 @@ const CHECKS: BaseCheck[] = [
   new CyclesCheck(),
   new DuplicatesCheck(),
   new FlatFolderCheck(),
-  new ArchitectureDocCheck(),
 ];
 
 /** Runs every deterministic rule, so reviewers can spend their attention on judgment. */
@@ -42,14 +40,11 @@ function describe(finding: Finding): string {
   return `${place} [${finding.check}] ${finding.message}`;
 }
 
-// A repo-wide finding (a missing document) has no file the branch could have changed, so it always stays.
 function isInBranchChange(finding: Finding, changed: string[]): boolean {
   switch (finding.scope) {
     case "file":
       return changed.includes(finding.path);
     case "folder":
       return changed.some((path) => dirname(path) === finding.path);
-    case "repo":
-      return true;
   }
 }
