@@ -8,14 +8,14 @@ for fit.** That gives four moments, each with one job:
 
 1. **Before a subagent starts:** the gate refuses a coding brief that has no spine to build on.
 2. **After code is written, by rule:** checks catch what needs no judgment (cycles, duplication, flat folders, a missing architecture doc).
-3. **After code is written, by judgment:** two reviewers from different vendors read it as a newcomer would.
-4. **Whenever the owner corrects a design:** the taste skill records it, so the coder and both reviewers follow it next time.
+3. **After code is written, by judgment:** a reviewer reads it as a newcomer would.
+4. **Whenever the owner corrects a design:** the taste skill records it, so the coder and the reviewer follow it next time.
 
 | Moment | Files |
 | --- | --- |
 | Gate | `hooks/hooks.json`, `agents/coder.md`, `src/commands/gate.ts` |
 | Rules | `src/commands/check.ts`, `src/checks/` |
-| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/second-opinion.ts`, `src/commands/pr-gate.ts`, `taste/` |
+| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/pr-gate.ts`, `taste/` |
 | Learning | `skills/taste/SKILL.md`, `src/commands/taste.ts`, `src/lib/taste.ts` |
 
 Evals measure whether moments 3 and 4 actually do what they should. `evals/` is run by Claude Code's own
@@ -37,20 +37,16 @@ Layers go one way, enforced by `tests/architecture.test.ts`: `main.ts` -> `comma
 
 ## One rule check, end to end
 
-`coherence check --base main` starts in `src/main.ts`, which finds `CheckCommand` by name. The command opens a `Repo`
-(`openReviewTarget`, shared with `second-opinion`), runs every entry in its `CHECKS` list, keeps findings the branch is
+`coherence check --base main` starts in `src/main.ts`, which finds `CheckCommand` by name. The command opens a `Repo`, runs every entry in its `CHECKS` list, keeps findings the branch is
 answerable for according to each finding's scope, prints them, and exits `Exit.findings` if any remain.
 
 ## One review, end to end
 
 `skills/review/SKILL.md` drives a review of a branch. It first runs `coherence check --base <ref>`; each finding is
-must-fix, so no reader spends attention on what a rule can catch. Then two readers work at the same time on the same
-rubric: the `readability-reviewer` subagent, and `coherence second-opinion`, which sends the reviewer's prompt plus the
-owner's taste to Codex (exit `Exit.unavailable` means Codex is not installed, and the review goes on with one reader).
-The skill merges them: a problem both raise is must-fix, one raised by only one is checked by reading the code and
-promoted or dropped with a reason. The skill then runs `coherence pr-gate pass`, which marks the branch in git config, and
+must-fix, so no reader spends attention on what a rule can catch. Then the `readability-reviewer` subagent reads the code
+as a newcomer would. The skill reports its verdict and findings, then runs `coherence pr-gate pass`, which marks the branch in git config, and
 the `pr-gate` hook refuses `gh pr create` from a branch without that mark. When the owner accepts or rejects a finding, or corrects a design in conversation, the
-`taste` skill records one general line through `coherence taste`, and both readers read it next time. At 40 lines the
+`taste` skill records one general line through `coherence taste`, and the reader reads it next time. At 40 lines the
 same skill condenses them into rules and archives the originals.
 
 ## One correction, end to end
@@ -59,7 +55,7 @@ The owner says something like "stop adding barrel files." The `taste` skill fire
 preference isn't already known, and runs `coherence taste add` with one general line that says what the owner wants.
 `lib/taste.ts` appends it, dated, to `taste-log.md` in the owner's config folder, outside the plugin so it survives an
 update. The next `coherence taste` prints the shipped style, then the condensed rules, then the log, and that is what
-the coder and both reviewers read. At 40 entries the command says the log is full, and the skill writes new rules from
+the coder and the reviewer read. At 40 entries the command says the log is full, and the skill writes new rules from
 the old rules and the entries. `coherence taste condense` replaces `taste-rules.md` and moves the entries to
 `taste-archive.md`.
 

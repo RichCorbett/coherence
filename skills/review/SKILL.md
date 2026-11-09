@@ -1,6 +1,6 @@
 ---
 name: review
-description: Coherence review of a branch or repo - runs the deterministic checks, then readability-reviewer and a Codex second opinion on the same rubric, and merges them. Use before merging non-trivial code, and over a whole repo after a big build-out.
+description: Coherence review of a branch or repo - runs the deterministic checks, then the readability-reviewer subagent. Use before merging non-trivial code, and over a whole repo after a big build-out.
 ---
 
 # Coherence review
@@ -8,9 +8,6 @@ description: Coherence review of a branch or repo - runs the deterministic check
 The argument is the base ref to compare against. With no argument, review the whole repository and leave out `--base` below.
 
 1. **Rules first.** Run `${CLAUDE_PLUGIN_ROOT}/bin/coherence check --base <ref>`. Each finding is must-fix: a reviewer should not spend attention on what a rule can catch.
-2. **Two independent readers, at the same time.** Spawn the `coherence:readability-reviewer` subagent with the base ref. Alongside it, run `${CLAUDE_PLUGIN_ROOT}/bin/coherence second-opinion --base <ref>` in the background. Exit 3 means Codex is not installed, and any other failure means it could not finish: say which and continue with one reader.
-3. **Merge.** Their mistakes differ, so agreement is the signal:
-   - Both raise the same problem: must-fix.
-   - Only one raises it: read the code yourself and either promote it to must-fix or drop it with a one-line reason.
-4. **Report** the verdict in a sentence, ending with one call and the reason: merge, fix first or rework. Then give must-fix findings with place and concrete fix, then what you dropped and why. When reviewing a branch, run `${CLAUDE_PLUGIN_ROOT}/bin/coherence pr-gate pass` afterwards, so it can open a pull request.
-5. **Learn.** When the owner accepts or rejects a finding, use the `coherence:taste` skill to record it. This is how both readers learn their taste.
+2. **The reader.** Spawn the `coherence:readability-reviewer` subagent with the base ref.
+3. **Report** the verdict in a sentence, ending with one call and the reason: merge, fix first or rework. Then give must-fix findings with place and concrete fix. When reviewing a branch, run `${CLAUDE_PLUGIN_ROOT}/bin/coherence pr-gate pass` afterwards, so it can open a pull request.
+4. **Learn.** When the owner accepts or rejects a finding, use the `coherence:taste` skill to record it. This is how the reader learns their taste.

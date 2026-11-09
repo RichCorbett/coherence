@@ -1,6 +1,8 @@
 import { dirname } from "node:path";
+import { parseArgs } from "node:util";
 import type { BaseCheck, Finding } from "../lib/base-check.ts";
-import { BaseCommand, Exit, openReviewTarget, type Invocation } from "../lib/base-command.ts";
+import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
+import { Repo } from "../lib/repo.ts";
 import { ArchitectureDocCheck } from "../checks/architecture-doc.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
@@ -19,7 +21,9 @@ export class CheckCommand extends BaseCommand {
   readonly usage = "coherence check [--base <ref>]";
 
   async execute(invocation: Invocation): Promise<number> {
-    const { repo, base } = await openReviewTarget(invocation);
+    const { values } = parseArgs({ args: invocation.args, options: { base: { type: "string" } } });
+    const base = values.base;
+    const repo = await Repo.open(invocation.cwd);
 
     let findings = (await Promise.all(CHECKS.map((check) => check.run(repo)))).flat();
     if (base) {
