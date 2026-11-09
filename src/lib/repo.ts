@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runProcess } from "./process.ts";
 
@@ -37,6 +37,10 @@ export class Repo {
     if (tracked.code !== 0) return false;
     const changed = await runProcess("git", ["diff", "--quiet", "HEAD", "--", path], this.root);
     return changed.code === 0;
+  }
+
+  async exists(path: string): Promise<boolean> {
+    return access(join(this.root, path)).then(() => true, () => false);
   }
 
   read(path: string): Promise<string> {
