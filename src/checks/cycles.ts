@@ -1,14 +1,12 @@
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
-import { runProcess } from "../lib/process.ts";
-import { asPathArgument, type Repo } from "../lib/repo.ts";
+import { runPinnedTool } from "../lib/process.ts";
+import type { Repo } from "../lib/repo.ts";
 
 const SCRIPT_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
-// An installed plugin has no npm install step, so the tool runs through pinned npx.
 // madge counts `import type` as an import unless told otherwise, which is what we want:
 // a type cycle still ties two files together for the reader.
-// --basedir . makes madge name files relative to the repo root, where it runs.
-const MADGE = ["--yes", "madge@8.0.0", "--json", "--circular", "--no-spinner", "--basedir", "."];
+const MADGE = ["madge@8.0.0", "--json", "--circular", "--no-spinner"];
 
 export class CyclesCheck extends BaseCheck {
   readonly name = "cycles";
@@ -18,7 +16,8 @@ export class CyclesCheck extends BaseCheck {
     if (files.length === 0) return [];
 
     // madge exits 1 when it finds cycles, so only a missing JSON answer means it failed.
-    const result = await runProcess("npx", [...MADGE, ...files.map(asPathArgument)], repo.root);
+    // --basedir makes madge name files relative to the repo root.
+    const result = await runPinnedTool([...MADGE, "--basedir", repo.root, ...files.map((path) => repo.absolutePath(path))]);
     let cycles: string[][];
     try {
       cycles = JSON.parse(result.stdout);

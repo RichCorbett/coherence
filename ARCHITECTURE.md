@@ -29,7 +29,7 @@ There are two kinds of thing, and each has a folder, one file each, and one shap
 - `src/checks/*.ts` extends `BaseCheck`: one deterministic rule.
 
 Everything else is machinery in `src/lib/`. Checks read code through `Repo`, and two (`cycles`, `duplicates`) also
-delegate to external tools, madge and jscpd, pinned and run through npx. A `Finding`'s path is always relative to the
+delegate to external tools, madge and jscpd, pinned and run through npx from an empty folder, so the repo under review cannot replace them. A `Finding`'s path is always relative to the
 repo root, and its scope (file, folder or repo) says when a branch is answerable for it. Every command returns one of
 the named `Exit` codes; an error that escapes a command is printed as one line by `main.ts` and exits `Exit.failed`.
 

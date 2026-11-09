@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export type ProcessResult = { code: number; stdout: string; stderr: string };
 
@@ -18,4 +21,18 @@ export function runProcess(command: string, args: string[], cwd: string, timeout
     // Nothing feeds these programs, and codex exec will not start until its stdin ends.
     child.stdin?.end();
   });
+}
+
+/**
+ * Runs a pinned npm tool, fetched through npx because an installed plugin has no npm install step.
+ * It runs from an empty folder because npx prefers a matching package in its working folder and obeys the .npmrc there,
+ * and the repo under review must not be able to supply either.
+ */
+export async function runPinnedTool(args: string[]): Promise<ProcessResult> {
+  const folder = await mkdtemp(join(tmpdir(), "coherence-tool-"));
+  try {
+    return await runProcess("npx", ["--yes", ...args], folder);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 }

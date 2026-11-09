@@ -2,15 +2,14 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
-import { runProcess } from "../lib/process.ts";
-import { asPathArgument, type Repo } from "../lib/repo.ts";
+import { runPinnedTool } from "../lib/process.ts";
+import type { Repo } from "../lib/repo.ts";
 
 type Side = { name: string; start: number; end: number };
 type Clone = { firstFile: Side; secondFile: Side };
 
-// An installed plugin has no npm install step, so the tool runs through pinned npx.
 // --absolute because jscpd's relative names depend on its own idea of the working folder.
-const JSCPD = ["--yes", "jscpd@5.4.3", "--reporters", "json", "--silent", "--absolute"];
+const JSCPD = ["jscpd@5.4.3", "--reporters", "json", "--silent", "--absolute"];
 
 export class DuplicatesCheck extends BaseCheck {
   readonly name = "duplicates";
@@ -30,7 +29,7 @@ export class DuplicatesCheck extends BaseCheck {
   private async findClones(repo: Repo, files: string[]): Promise<Clone[]> {
     const output = await mkdtemp(join(tmpdir(), "coherence-jscpd-"));
     try {
-      const result = await runProcess("npx", [...JSCPD, "--output", output, ...files.map(asPathArgument)], repo.root);
+      const result = await runPinnedTool([...JSCPD, "--output", output, ...files.map((path) => repo.absolutePath(path))]);
       if (result.code !== 0) throw new Error(`jscpd failed: ${result.stderr.trim() || result.stdout.trim()}`);
       return JSON.parse(await readFile(join(output, "jscpd-report.json"), "utf8")).duplicates;
     } finally {

@@ -7,11 +7,6 @@ const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|c|h|cc|cpp|swift)
 // Nobody reads these to follow how the system works, so they are not held to the standard.
 const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
 
-/** A repo path safe to hand to another program: a filename starting with `-` must not be read as an option. */
-export function asPathArgument(path: string): string {
-  return `./${path}`;
-}
-
 /** The git repository under review. Every check sees the code through this one view. */
 export class Repo {
   readonly root: string;
@@ -33,7 +28,7 @@ export class Repo {
 
   /** Files changed since the branch left `base`; deleted files have nothing left to check. */
   changedFiles(base: string): Promise<string[]> {
-    return this.gitPaths(["diff", "--name-only", "-z", "--diff-filter=d", `${base}...HEAD`]);
+    return this.gitPaths(["diff", "--name-only", "-z", "--diff-filter=d", "--end-of-options", `${base}...HEAD`]);
   }
 
   /** True when `path` is tracked and has no uncommitted changes. */
@@ -42,6 +37,11 @@ export class Repo {
     if (tracked.code !== 0) return false;
     const changed = await runProcess("git", ["diff", "--quiet", "HEAD", "--", path], this.root);
     return changed.code === 0;
+  }
+
+  /** A repo path for another program. Being absolute, a filename starting with `-` cannot be read as an option. */
+  absolutePath(path: string): string {
+    return join(this.root, path);
   }
 
   async exists(path: string): Promise<boolean> {

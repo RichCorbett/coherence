@@ -70,7 +70,7 @@ coherence taste condense                  replace the rules with stdin and archi
 - The gate proves a spine was named, not that it's any good. It only covers `coherence:coder`, so your `CLAUDE.md` has to send coding work there.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
 - The evals only measure the reviewer, on tiny samples. They don't show whether the coder's output is better. See `evals/baseline.md`.
-- The checks run `npx` inside the repo being reviewed, so only point them at code you trust.
+- The reviewers read text from the repo under review, so a hostile repo could try to steer them. Codex is read-only and the Claude reviewer has no edit tools, but it does have Bash, so be careful reviewing code from strangers.
 - The reviewer can use gbrain's code graph tools. Without them it greps the imports instead.
 
 ## Develop

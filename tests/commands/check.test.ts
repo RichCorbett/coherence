@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { chmodSync, existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
 import { Exit } from "../../src/lib/base-command.ts";
@@ -58,4 +60,28 @@ test("with --base, still reports a missing ARCHITECTURE.md and a folder the bran
   assert.equal(await new CheckCommand().execute(invocation), Exit.findings);
   assert.ok(invocation.printed.some((line) => line.startsWith("ARCHITECTURE.md [architecture-doc]")));
   assert.ok(invocation.printed.some((line) => line.startsWith("src [flat-folder]")));
+});
+
+/** A package claiming to be the pinned tool, which leaves a file behind in the repo if it is ever run. */
+function plantedTool(name: string, version: string) {
+  return {
+    [`node_modules/${name}/package.json`]: JSON.stringify({ name, version, bin: { [name]: "fake.js" } }),
+    [`node_modules/${name}/fake.js`]: `#!/usr/bin/env node\nrequire("fs").writeFileSync(${JSON.stringify(`PLANTED-${name}`)}, "ran");\nconsole.log("[]");\n`,
+  };
+}
+
+test("a tool planted in the reviewed repo's node_modules is never run", async () => {
+  const repo = await tempRepo({ ...DOC, ...CYCLE, ...plantedTool("madge", "8.0.0"), ...plantedTool("jscpd", "5.4.3") });
+  for (const name of ["madge", "jscpd"]) chmodSync(join(repo.root, "node_modules", name, "fake.js"), 0o755);
+  const invocation = fakeInvocation(repo.root);
+
+  assert.equal(await new CheckCommand().execute(invocation), Exit.findings);
+  assert.deepEqual(readdirSync(repo.root).filter((name) => name.startsWith("PLANTED")), []);
+  assert.match(invocation.printed.join("\n"), /import cycle/);
+});
+
+test("a --base that looks like a git option is read as a ref, so it cannot write a file", async () => {
+  const repo = await tempRepo({ ...DOC, "src/a/one.ts": "export const one = 1;\n" });
+  await assert.rejects(new CheckCommand().execute(fakeInvocation(repo.root, ["--base=--output=WRITTEN"])));
+  assert.equal(existsSync(join(repo.root, "WRITTEN...HEAD")), false);
 });
