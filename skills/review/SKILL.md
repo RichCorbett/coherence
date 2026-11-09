@@ -13,4 +13,4 @@ The argument is the base ref to compare against. With no argument, review the wh
    - Both raise the same problem: must-fix.
    - Only one raises it: read the code yourself and either promote it to must-fix or drop it with a one-line reason.
 4. **Report** the verdict in a sentence, then must-fix findings with place and concrete fix, then what you dropped and why.
-5. **Learn.** When the owner accepts or rejects a finding, record it with `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste accepted "<finding>"` or `rejected`. This is how both readers learn their taste.
+5. **Learn.** When the owner accepts or rejects a finding, use the `coherence:taste` skill to record it. This is how both readers learn their taste.
