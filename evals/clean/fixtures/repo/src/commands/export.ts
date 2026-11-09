@@ -5,6 +5,6 @@ export class ExportCommand extends BaseCommand {
   readonly name = "export";
 
   execute(): string {
-    return JSON.stringify(structuredClone(bookings));
+    return JSON.stringify(bookings);
   }
 }
