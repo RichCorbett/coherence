@@ -7,7 +7,7 @@
     {
       "name": "coherence",
       "source": "./",
-      "description": "Coherent agent-written code."
+      "description": "Makes agent-written code read like one person wrote it: a spawn gate, deterministic checks and two independent readability reviewers."
     }
   ]
 }

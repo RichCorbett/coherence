@@ -1,5 +1,30 @@
 # Eval baseline
 
+## Latest run
+
+3 runs per case, about $6 in all, on the final reviewer and taste skill.
+
+| Case | Grader | Passed |
+|---|---|---|
+| clean | found-no-defect | 3/3 |
+| clean | stated-the-idea | 3/3 |
+| no-shape | found-inconsistent-shapes | 3/3 |
+| no-shape | found-overlapping-names | 3/3 |
+| no-shape | found-ticket-named-file | 3/3 |
+| overbuilt | found-overbuilt | 3/3 |
+| overbuilt | said-how-small | 3/3 |
+| overbuilt | kept-the-good-shape | 2/3 |
+| reinvented | found-duplicate-helper | 3/3 |
+| reinvented | found-standard-library | 3/3 |
+| reinvented | kept-the-good-shape | 2/3 |
+| taste-capture | used-the-skill | 3/3 |
+| taste-capture | recorded-a-general-line | 3/3 |
+| taste-one-off | stayed-quiet | 3/3 |
+| taste-applied | still-found-the-duplicate | 3/3 |
+| taste-applied | honored-the-rejection | 2/3 |
+
+## History
+
 Compare any change to the reviewer or the taste file against this. Recorded 2026-11-09 with Claude Code 2.1.319,
 `coherence:readability-reviewer` on Opus at medium effort, three runs per case, Sonnet judges.
 

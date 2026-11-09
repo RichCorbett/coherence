@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PrGateCommand } from "../../src/commands/pr-gate.ts";
 import { Exit } from "../../src/lib/base-command.ts";
-import { tempFolder } from "../helpers/sandbox.ts";
+import { setEnv, tempFolder } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
 async function runHook(cwd: string, command: string) {
@@ -19,7 +19,8 @@ test("lets every other shell command through without asking git anything", async
   assert.deepEqual(await runHook(tempFolder(), "gh pr list"), []);
 });
 
-test("refuses to open a PR from a branch with no review, and names the branch and the way forward", async () => {
+test("refuses to open a PR from a branch with no review, and names the branch and the way forward", async (t) => {
+  setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
   const [output] = await runHook(repo.root, "git push && gh pr create --fill");
@@ -27,6 +28,7 @@ test("refuses to open a PR from a branch with no review, and names the branch an
   assert.equal(decision.permissionDecision, "deny");
   assert.match(decision.permissionDecisionReason, /feature/);
   assert.match(decision.permissionDecisionReason, /\/coherence:review/);
+  assert.match(decision.permissionDecisionReason, / \/plugin\/bin\/coherence pr-gate pass/);
 });
 
 test("once the review is recorded the PR opens, for that branch only", async () => {

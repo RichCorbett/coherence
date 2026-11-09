@@ -1,8 +1,7 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
-import { runPinnedTool } from "../lib/process.ts";
+import { runPinnedTool, withTempFolder } from "../lib/process.ts";
 import type { Repo } from "../lib/repo.ts";
 
 type Side = { name: string; start: number; end: number };
@@ -27,14 +26,11 @@ export class DuplicatesCheck extends BaseCheck {
   }
 
   private async findClones(repo: Repo, files: string[]): Promise<Clone[]> {
-    const output = await mkdtemp(join(tmpdir(), "coherence-jscpd-"));
-    try {
+    return withTempFolder(async (output) => {
       const result = await runPinnedTool([...JSCPD, "--output", output, ...files.map((path) => repo.absolutePath(path))]);
       if (result.code !== 0) throw new Error(`jscpd failed: ${result.stderr.trim() || result.stdout.trim()}`);
       return JSON.parse(await readFile(join(output, "jscpd-report.json"), "utf8")).duplicates;
-    } finally {
-      await rm(output, { recursive: true, force: true });
-    }
+    });
   }
 
   private describe(repo: Repo, here: Side, other: Side): Finding {

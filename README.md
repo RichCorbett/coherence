@@ -8,13 +8,15 @@ Early, version 0.1. It's small, and the limits are listed below.
 
 ## What it looks like
 
-Ask a subagent to "add a retry helper" with no shape to build on, and the hook stops it before it writes anything:
+A **brief** is the prompt the main agent hands a coding subagent. The **spine** is the committed base shapes and one running example that new code must build on.
+
+Ask `coherence:coder` to "add a retry helper" with no spine, and a hook stops it before it writes anything:
 
 ```
 Brief refused by coherence: the Idea field is missing or empty; the Spine field is missing or empty;
 the Slot field is missing or empty; the Reuse field is missing or empty; the Done field is missing or empty.
 Write and commit the spine first (the base shapes and a worked example the new code must build on),
-then brief again with all five fields, each starting a line
+then brief again with all five fields, each starting a line...
 ```
 
 A brief that gets through says what the new code is building on:
@@ -27,11 +29,11 @@ Reuse: the backoff in src/lib/client.ts
 Done: the calendar client's tests pass and it adds no new retry code
 ```
 
-Before merging, `/coherence:review main` ends with a verdict: merge, fix first or rework, and why. Tell it a finding is wrong and it records that for next time.
+Before merging, `/coherence:review main` gives a verdict: merge, fix first or rework, and why. Tell it a finding is wrong and it records that for next time.
 
 ## How it works
 
-The main agent states the idea and commits the spine: the base shapes and one complete, running example. Subagents then fill slots in dependency order. A review comes last.
+The main agent states the idea and commits the spine. Subagents then fill slots in dependency order. A review comes last.
 
 | Moment | When | What happens |
 |---|---|---|
@@ -61,7 +63,7 @@ Taste is text the coder and both reviewers read before they work. Nothing is tra
 
 ## Install
 
-Needs Node 26 or newer, because the TypeScript runs directly with no build step. The checks fetch pinned versions of madge and jscpd through `npx`, so the plugin has no install step of its own. [Codex](https://github.com/openai/codex) is optional: without it the review runs with one reader.
+Needs Node 26 or newer, because the TypeScript runs directly with no build step. The checks fetch pinned versions of madge and jscpd through `npx`, so the plugin has no install step of its own. [Codex](https://github.com/openai/codex) is optional: without it the review runs with one reader. [gbrain](https://github.com/garrytan/gbrain) is optional too: its code graph lets the reviewer trace dependencies exactly, and without it the reviewer greps the imports.
 
 ```sh
 claude plugin marketplace add grreardon/coherence
@@ -96,9 +98,8 @@ coherence taste condense                  replace the rules with stdin and archi
 - The gate proves a spine was named, not that it's any good. It only covers `coherence:coder`, so your `CLAUDE.md` has to send coding work there.
 - The PR hook only sees PRs Claude opens with `gh pr create`. It remembers a branch was reviewed, not which commits, and Claude can mark a trivial change as passed.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
-- The evals only measure the reviewer, on tiny samples. They don't show whether the coder's output is better. See `evals/baseline.md`.
+- The evals measure the reviewer and the taste skill, on tiny samples. They don't show whether the coder's output is better. See `evals/baseline.md`.
 - The reviewers read text from the repo under review, so a hostile repo could try to steer them. Codex is read-only and the Claude reviewer has no edit tools, but it does have Bash, so be careful reviewing code from strangers.
-- The reviewer can use gbrain's code graph tools. Without them it greps the imports instead.
 
 ## How well it works
 
@@ -107,7 +108,7 @@ These are the latest eval results, 3 runs per case on tiny sample repos. The ful
 | What was tested | Result |
 |---|---|
 | Finds planted defects: reinvented helpers, overbuilt code, inconsistent shapes | 21 of 21 |
-| Says clean code is clean | 3 of 3 |
+| Says clean code is clean | 3 of 3, but 1 or 2 of 3 in earlier runs |
 | Leaves the good parts alone | 4 of 6 |
 | Records a new preference when you correct a design | 3 of 3 |
 | Stays quiet on a one-off change | 3 of 3 |
@@ -115,7 +116,7 @@ These are the latest eval results, 3 runs per case on tiny sample repos. The ful
 
 ## Develop
 
-`npm run check` runs types, tests, and `coherence check` on this repo. [ARCHITECTURE.md](ARCHITECTURE.md) walks a request through the modules.
+`npm install`, then `npm run check` runs types, tests, and `coherence check` on this repo. [ARCHITECTURE.md](ARCHITECTURE.md) walks a request through the modules.
 
 Evals spend real money, about $6 for all the cases at 3 runs each:
 

@@ -18,7 +18,7 @@ for fit.** That gives four moments, each with one job:
 | Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/second-opinion.ts`, `src/commands/pr-gate.ts`, `taste/` |
 | Learning | `skills/taste/SKILL.md`, `src/commands/taste.ts`, `src/lib/taste.ts` |
 
-An eval measures whether moment 3 actually finds what it should. `evals/` is run by Claude Code's own
+Evals measure whether moments 3 and 4 actually do what they should. `evals/` is run by Claude Code's own
 `claude plugin eval`: it is case files (fixture repos and graders) with no runner of ours.
 
 ## What it is made of
@@ -70,7 +70,7 @@ When the main agent spawns a `coder` subagent, Claude Code runs the PreToolUse h
 five brief fields and opens a `Repo` from each spine path's own folder, because the
 target repo can differ from the session's, then asks `repo.isCommitted`. Any problem comes back as one `deny` naming
 all of them, telling the agent to write and commit the spine first; otherwise the gate prints nothing and the spawn
-proceeds. Later, `coherence second-opinion` sends the same reviewer prompt plus the owner's taste (`lib/taste.ts`) to Codex.
+proceeds.
 
 The brief fields are defined once, in `FIELDS` in `src/commands/gate.ts`, and the same meanings are in the description of
 `agents/coder.md`, which is the text read before spawning:

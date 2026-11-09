@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, readdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
@@ -72,7 +72,11 @@ function plantedTool(name: string, version: string) {
 
 test("a tool planted in the reviewed repo's node_modules is never run", async () => {
   const repo = await tempRepo({ ...DOC, ...CYCLE, ...plantedTool("madge", "8.0.0"), ...plantedTool("jscpd", "5.4.3") });
-  for (const name of ["madge", "jscpd"]) chmodSync(join(repo.root, "node_modules", name, "fake.js"), 0o755);
+  mkdirSync(join(repo.root, "node_modules/.bin"));
+  for (const name of ["madge", "jscpd"]) {
+    chmodSync(join(repo.root, "node_modules", name, "fake.js"), 0o755);
+    symlinkSync(`../${name}/fake.js`, join(repo.root, "node_modules/.bin", name));
+  }
   const invocation = fakeInvocation(repo.root);
 
   assert.equal(await new CheckCommand().execute(invocation), Exit.findings);

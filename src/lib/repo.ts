@@ -43,7 +43,7 @@ export class Repo {
     return changed.code === 0;
   }
 
-  /** A repo path for another program. Being absolute, a filename starting with `-` cannot be read as an option. */
+  /** A repo path usable from any working folder. Being absolute, it also cannot be read as an option. */
   absolutePath(path: string): string {
     return join(this.root, path);
   }
@@ -65,11 +65,11 @@ export class Repo {
   }
 
   async exists(path: string): Promise<boolean> {
-    return access(join(this.root, path)).then(() => true, () => false);
+    return access(this.absolutePath(path)).then(() => true, () => false);
   }
 
   read(path: string): Promise<string> {
-    return readFile(join(this.root, path), "utf8");
+    return readFile(this.absolutePath(path), "utf8");
   }
 
   private async gitPaths(args: string[]): Promise<string[]> {

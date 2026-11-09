@@ -21,7 +21,8 @@ export class PrGateCommand extends BaseCommand {
     const branch = await repo?.currentBranch();
     if (!repo || !branch || (await repo.isBranchReviewed(branch))) return Exit.ok;
 
-    const coherence = `${process.env.CLAUDE_PLUGIN_ROOT ?? ""}/bin/coherence`.replace(/^\//, "");
+    const root = process.env.CLAUDE_PLUGIN_ROOT;
+    const coherence = root ? `${root}/bin/coherence` : "coherence";
     this.deny(
       invocation,
       `PR refused by coherence: branch ${branch} has not had a coherence review. Run /coherence:review <base>, fix what is real, ` +

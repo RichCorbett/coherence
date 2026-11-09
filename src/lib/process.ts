@@ -29,9 +29,14 @@ export function runProcess(command: string, args: string[], cwd: string, timeout
  * and the repo under review must not be able to supply either.
  */
 export async function runPinnedTool(args: string[]): Promise<ProcessResult> {
-  const folder = await mkdtemp(join(tmpdir(), "coherence-tool-"));
+  return withTempFolder((folder) => runProcess("npx", ["--yes", ...args], folder));
+}
+
+/** Gives `work` an empty folder and removes it afterwards, however `work` ends. */
+export async function withTempFolder<T>(work: (folder: string) => Promise<T>): Promise<T> {
+  const folder = await mkdtemp(join(tmpdir(), "coherence-"));
   try {
-    return await runProcess("npx", ["--yes", ...args], folder);
+    return await work(folder);
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
