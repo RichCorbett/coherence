@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { FlatFolderCheck } from "../../src/checks/flat-folder.ts";
-import { tempRepo, type Files } from "../helpers/temp-repo.ts";
+import { type Files } from "../helpers/sandbox.ts";
+import { tempRepo } from "../helpers/temp-repo.ts";
 
 function filesIn(folder: string, count: number): Files {
   return Object.fromEntries(Array.from({ length: count }, (_, i) => [`${folder}/f${i}.ts`, "x\n"]));

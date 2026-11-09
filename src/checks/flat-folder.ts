@@ -17,7 +17,7 @@ export class FlatFolderCheck extends BaseCheck {
     return [...counts]
       .filter(([, count]) => count > MAX_FILES)
       .map(([folder, count]) =>
-        this.finding(folder, `${count} source files directly inside, over the limit of ${MAX_FILES}; group them into folders by what they do`),
+        this.finding(folder, `${count} source files directly inside, over the limit of ${MAX_FILES}; group them into folders by what they do`, { scope: "folder" }),
       );
   }
 }

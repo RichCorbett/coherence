@@ -1,26 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 import type { Invocation } from "../../src/lib/base-command.ts";
 import { Repo } from "../../src/lib/repo.ts";
-
-export type Files = Record<string, string>;
+import { tempFolder, writeFiles, type Files } from "./sandbox.ts";
 
 export function git(root: string, ...args: string[]): void {
   execFileSync("git", ["-c", "user.name=test", "-c", "user.email=test@example.com", ...args], { cwd: root, stdio: "pipe" });
 }
 
-export function writeFiles(root: string, files: Files): void {
-  for (const [path, content] of Object.entries(files)) {
-    mkdirSync(dirname(join(root, path)), { recursive: true });
-    writeFileSync(join(root, path), content);
-  }
-}
-
 /** A real git repository holding `files` in one commit on `main`. */
 export async function tempRepo(files: Files): Promise<Repo> {
-  const root = mkdtempSync(join(tmpdir(), "coherence-test-"));
+  const root = tempFolder();
   git(root, "init", "-q", "-b", "main");
   writeFiles(root, files);
   git(root, "add", "-A");
@@ -29,7 +18,12 @@ export async function tempRepo(files: Files): Promise<Repo> {
 }
 
 /** An invocation that captures what a command prints instead of writing to the terminal. */
-export function fakeInvocation(cwd: string, args: string[] = [], stdin = ""): Invocation & { printed: string[] } {
+export function fakeInvocation(
+  cwd: string,
+  args: string[] = [],
+  stdin = "",
+): Invocation & { printed: string[]; errors: string[] } {
   const printed: string[] = [];
-  return { args, cwd, printed, readStdin: async () => stdin, print: (line) => printed.push(line) };
+  const errors: string[] = [];
+  return { args, cwd, printed, errors, readStdin: async () => stdin, print: (line) => printed.push(line), printError: (line) => errors.push(line) };
 }

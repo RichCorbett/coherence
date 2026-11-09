@@ -1,1 +1,1 @@
-{"hooks":{"PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"node \"${CLAUDE_PLUGIN_ROOT}/src/main.ts\" gate","timeout":30}]}]}}
+{"hooks":{"PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"\"${CLAUDE_PLUGIN_ROOT}/bin/coherence\" gate","timeout":30}]}]}}

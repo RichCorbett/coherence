@@ -1,18 +1,11 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
+import { readPluginFile } from "./plugin-files.ts";
 
-export type Verdict = "accepted" | "rejected";
-
-/** The folder the plugin's own files live in. An installed plugin gets it from Claude Code; tests point it elsewhere. */
-function pluginRoot(): string {
-  return process.env.CLAUDE_PLUGIN_ROOT ?? resolve(import.meta.dirname, "../..");
-}
-
-export function readPluginFile(path: string): Promise<string> {
-  return readFile(join(pluginRoot(), path), "utf8");
-}
+export const VERDICTS = ["accepted", "rejected"] as const;
+export type Verdict = (typeof VERDICTS)[number];
 
 // Outside the plugin because an installed plugin is a cached copy that an update overwrites.
 function tasteLogPath(): string {

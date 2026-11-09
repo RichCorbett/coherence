@@ -4,9 +4,11 @@ import { asPathArgument, type Repo } from "../lib/repo.ts";
 
 const SCRIPT_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
+// An installed plugin has no npm install step, so the tool runs through pinned npx.
 // madge counts `import type` as an import unless told otherwise, which is what we want:
 // a type cycle still ties two files together for the reader.
-const MADGE = ["--yes", "madge@8.0.0", "--json", "--circular", "--no-spinner"];
+// --basedir . makes madge name files relative to the repo root, where it runs.
+const MADGE = ["--yes", "madge@8.0.0", "--json", "--circular", "--no-spinner", "--basedir", "."];
 
 export class CyclesCheck extends BaseCheck {
   readonly name = "cycles";
@@ -24,8 +26,10 @@ export class CyclesCheck extends BaseCheck {
       throw new Error(`madge failed: ${result.stderr.trim() || result.stdout.trim()}`);
     }
 
-    return cycles.map((cycle) =>
-      this.finding(cycle[0], `import cycle: ${[...cycle, cycle[0]].join(" -> ")}; make dependencies point one way`),
-    );
+    // One finding per file, so editing any file of a cycle makes the branch answerable for it.
+    return cycles.flatMap((cycle) => {
+      const message = `import cycle: ${[...cycle, cycle[0]].join(" -> ")}; make dependencies point one way`;
+      return cycle.map((path) => this.finding(path, message));
+    });
   }
 }

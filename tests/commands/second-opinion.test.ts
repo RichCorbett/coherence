@@ -4,13 +4,13 @@ import { delimiter, join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { execFileSync } from "node:child_process";
 import { SecondOpinionCommand } from "../../src/commands/second-opinion.ts";
-import { setEnv, tempFolder } from "../helpers/env.ts";
-import { fakeInvocation, tempRepo, writeFiles } from "../helpers/temp-repo.ts";
+import { Exit } from "../../src/lib/base-command.ts";
+import { isolatedPlugin, setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
+import { fakeInvocation, tempRepo } from "../helpers/temp-repo.ts";
 
-/** A plugin folder, an empty config home, and a PATH holding git and, if given, a stub codex. */
+/** An isolated plugin, and a PATH holding git and, if given, a stub codex. */
 function isolated(t: TestContext, codexScript?: string) {
-  const plugin = tempFolder();
-  writeFiles(plugin, {
+  isolatedPlugin(t, {
     "agents/readability-reviewer.md": "---\nname: readability-reviewer\n---\nREVIEWER BODY\n",
     "taste/style.md": "STYLE\n",
   });
@@ -21,7 +21,7 @@ function isolated(t: TestContext, codexScript?: string) {
     writeFiles(bin, { codex: `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n${codexScript}\n` });
     chmodSync(join(bin, "codex"), 0o755);
   }
-  setEnv(t, { CLAUDE_PLUGIN_ROOT: plugin, XDG_CONFIG_HOME: tempFolder(), PATH: bin });
+  setEnv(t, { PATH: bin });
   return record;
 }
 
@@ -32,7 +32,7 @@ test("sends the reviewer body, taste and scope to codex read-only, and prints it
   const repo = await tempRepo({ "a.ts": "x\n" });
   const invocation = fakeInvocation(repo.root, ["--base", "main"]);
 
-  assert.equal(await new SecondOpinionCommand().execute(invocation), 0);
+  assert.equal(await new SecondOpinionCommand().execute(invocation), Exit.ok);
   assert.deepEqual(invocation.printed, ["CANNED REVIEW"]);
 
   const recorded = readFileSync(record, "utf8");
@@ -48,18 +48,18 @@ test("reviews the whole repository when no base is given", async (t) => {
   assert.match(readFileSync(record, "utf8"), /Review the whole repository\n$/);
 });
 
-test("prints codex's stderr and exits 1 when codex fails", async (t) => {
+test("prints codex's stderr as an error and fails when codex fails", async (t) => {
   isolated(t, "echo 'boom' >&2; exit 4");
   const repo = await tempRepo({ "a.ts": "x\n" });
   const invocation = fakeInvocation(repo.root);
-  assert.equal(await new SecondOpinionCommand().execute(invocation), 1);
-  assert.deepEqual(invocation.printed, ["boom"]);
+  assert.equal(await new SecondOpinionCommand().execute(invocation), Exit.failed);
+  assert.deepEqual(invocation.errors, ["boom"]);
 });
 
-test("says it was skipped and exits 3 when codex is not installed", async (t) => {
+test("says it was skipped and is unavailable when codex is not installed", async (t) => {
   isolated(t);
   const repo = await tempRepo({ "a.ts": "x\n" });
   const invocation = fakeInvocation(repo.root);
-  assert.equal(await new SecondOpinionCommand().execute(invocation), 3);
+  assert.equal(await new SecondOpinionCommand().execute(invocation), Exit.unavailable);
   assert.match(invocation.printed[0], /skipped/);
 });

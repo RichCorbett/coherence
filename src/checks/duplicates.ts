@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
 import { runProcess } from "../lib/process.ts";
 import { asPathArgument, type Repo } from "../lib/repo.ts";
@@ -8,7 +8,9 @@ import { asPathArgument, type Repo } from "../lib/repo.ts";
 type Side = { name: string; start: number; end: number };
 type Clone = { firstFile: Side; secondFile: Side };
 
-const JSCPD = ["--yes", "jscpd@5.4.3", "--reporters", "json", "--silent"];
+// An installed plugin has no npm install step, so the tool runs through pinned npx.
+// --absolute because jscpd's relative names depend on its own idea of the working folder.
+const JSCPD = ["--yes", "jscpd@5.4.3", "--reporters", "json", "--silent", "--absolute"];
 
 export class DuplicatesCheck extends BaseCheck {
   readonly name = "duplicates";
@@ -20,8 +22,8 @@ export class DuplicatesCheck extends BaseCheck {
 
     const clones = await this.findClones(repo, files);
     return clones.flatMap(({ firstFile, secondFile }) => [
-      this.describe(firstFile, secondFile),
-      this.describe(secondFile, firstFile),
+      this.describe(repo, firstFile, secondFile),
+      this.describe(repo, secondFile, firstFile),
     ]);
   }
 
@@ -36,8 +38,9 @@ export class DuplicatesCheck extends BaseCheck {
     }
   }
 
-  private describe(here: Side, other: Side): Finding {
-    const message = `lines ${here.start}-${here.end} repeat ${other.name}:${other.start}-${other.end}; share one version`;
-    return this.finding(here.name, message, here.start);
+  private describe(repo: Repo, here: Side, other: Side): Finding {
+    const otherPath = relative(repo.root, other.name);
+    const message = `lines ${here.start}-${here.end} repeat ${otherPath}:${other.start}-${other.end}; share one version`;
+    return this.finding(relative(repo.root, here.name), message, { line: here.start });
   }
 }

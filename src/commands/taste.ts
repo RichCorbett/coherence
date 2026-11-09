@@ -1,7 +1,5 @@
-import { BaseCommand, type Invocation } from "../lib/base-command.ts";
-import { appendTaste, readTaste, type Verdict } from "../lib/taste.ts";
-
-const VERDICTS: string[] = ["accepted", "rejected"];
+import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
+import { appendTaste, readTaste, VERDICTS, type Verdict } from "../lib/taste.ts";
 
 /** Shows the owner's taste, or records one more finding the owner accepted or rejected. */
 export class TasteCommand extends BaseCommand {
@@ -12,15 +10,19 @@ export class TasteCommand extends BaseCommand {
     const [verb, ...words] = invocation.args;
     if (verb === undefined) {
       invocation.print((await readTaste()).trimEnd());
-      return 0;
+      return Exit.ok;
     }
 
     const finding = words.join(" ").trim();
-    if (!VERDICTS.includes(verb) || finding === "") {
-      invocation.print(`usage: ${this.usage}`);
-      return 2;
+    if (!isVerdict(verb) || finding === "") {
+      invocation.printError(`usage: ${this.usage}`);
+      return Exit.usage;
     }
-    await appendTaste(verb as Verdict, finding);
-    return 0;
+    await appendTaste(verb, finding);
+    return Exit.ok;
   }
+}
+
+function isVerdict(word: string): word is Verdict {
+  return (VERDICTS as readonly string[]).includes(word);
 }

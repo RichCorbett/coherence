@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GateCommand } from "../../src/commands/gate.ts";
-import { fakeInvocation, tempRepo, writeFiles } from "../helpers/temp-repo.ts";
-import { tempFolder } from "../helpers/env.ts";
+import { FIELDS, GateCommand } from "../../src/commands/gate.ts";
+import { tempFolder, writeFiles } from "../helpers/sandbox.ts";
+import { fakeInvocation, tempRepo } from "../helpers/temp-repo.ts";
 
 function brief(spine: string, overrides: Record<string, string | null> = {}): string {
   const fields: Record<string, string | null> = {
@@ -91,4 +93,12 @@ test("judges a spine in another repo by that repo, not by the session's cwd", as
 
   writeFiles(target.root, { "src/a.ts": "changed\n" });
   assert.match(denial((await runGate(session.root, "coder", brief(spine))).printed), /is not committed/);
+});
+
+test("the brief format reads the same in the gate, the coder agent and the architecture doc", () => {
+  const root = resolve(import.meta.dirname, "../..");
+  for (const document of ["agents/coder.md", "ARCHITECTURE.md"]) {
+    const text = readFileSync(join(root, document), "utf8").replace(/\s+/g, " ");
+    for (const field of FIELDS) assert.ok(text.includes(field.meaning), `${document} is missing the meaning of ${field.name}`);
+  }
 });

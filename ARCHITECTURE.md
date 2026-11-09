@@ -10,7 +10,14 @@ for fit.** That gives three moments, each with one job:
 2. **After code is written, by rule:** checks catch what needs no judgment (cycles, duplication, oversized files).
 3. **After code is written, by judgment:** two reviewers from different vendors read it as a newcomer would.
 
-An eval measures whether moment 3 actually finds what it should.
+| Moment | Files |
+| --- | --- |
+| Gate | `hooks/hooks.json`, `agents/coder.md`, `src/commands/gate.ts` |
+| Rules | `src/commands/check.ts`, `src/checks/` |
+| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/second-opinion.ts`, `taste/` |
+
+An eval measures whether moment 3 actually finds what it should. `evals/` is run by Claude Code's own
+`claude plugin eval`: it is case files (fixture repos and graders) with no runner of ours.
 
 ## What it is made of
 
@@ -19,20 +26,43 @@ There are two kinds of thing, and each has a folder, one file each, and one shap
 - `src/commands/*.ts` extends `BaseCommand`: one thing the `coherence` CLI can do.
 - `src/checks/*.ts` extends `BaseCheck`: one deterministic rule.
 
-Everything else is machinery in `src/lib/`. `Repo` is the only view of the code that checks get.
+Everything else is machinery in `src/lib/`. Checks read code through `Repo`, and two (`cycles`, `duplicates`) also
+delegate to external tools, madge and jscpd, pinned and run through npx. A `Finding`'s path is always relative to the
+repo root, and its scope (file, folder or repo) says when a branch is answerable for it. Every command returns one of
+the named `Exit` codes; an error that escapes a command is printed as one line by `main.ts` and exits `Exit.failed`.
 
 Layers go one way, enforced by `tests/architecture.test.ts`: `main.ts` -> `commands/` -> `checks/` -> `lib/`.
 
+## One rule check, end to end
+
+`coherence check --base main` starts in `src/main.ts`, which finds `CheckCommand` by name. The command opens a `Repo`
+(`openReviewTarget`, shared with `second-opinion`), runs every entry in its `CHECKS` list, keeps findings the branch is
+answerable for according to each finding's scope, prints them, and exits `Exit.findings` if any remain.
+
 ## One review, end to end
 
-`coherence check --base main` starts in `src/main.ts`, which finds `CheckCommand` by name. The command opens a `Repo`,
-runs every entry in its `CHECKS` list, keeps findings in files the branch changed, prints them, and exits 1 if any remain.
+`skills/review/SKILL.md` drives a review of a branch. It first runs `coherence check --base <ref>`; each finding is
+must-fix, so no reader spends attention on what a rule can catch. Then two readers work at the same time on the same
+rubric: the `readability-reviewer` subagent, and `coherence second-opinion`, which sends the reviewer's prompt plus the
+owner's taste to Codex (exit `Exit.unavailable` means Codex is not installed, and the review goes on with one reader).
+The skill merges them: a problem both raise is must-fix, one raised by only one is checked by reading the code and
+promoted or dropped with a reason. When the owner accepts or rejects a finding, `coherence taste` records it, and both
+readers read that record next time.
 
 ## One coder spawn, end to end
 
 When the main agent spawns a `coder` subagent, Claude Code runs the PreToolUse hook in `hooks/hooks.json`, which calls
-`coherence gate` with the hook JSON on stdin. `GateCommand` ignores every other subagent type. For a coder it reads the
-five brief fields (Idea, Spine, Slot, Reuse, Done) and opens a `Repo` from each spine path's own folder, because the
+`bin/coherence gate` (the one way into the CLI) with the hook JSON on stdin. `GateCommand` ignores every other subagent type. For a coder it reads the
+five brief fields and opens a `Repo` from each spine path's own folder, because the
 target repo can differ from the session's, then asks `repo.isCommitted`. Any problem comes back as one `deny` naming
 all of them, telling the agent to write and commit the spine first; otherwise the gate prints nothing and the spawn
 proceeds. Later, `coherence second-opinion` sends the same reviewer prompt plus the owner's taste (`lib/taste.ts`) to Codex.
+
+The brief fields are defined once, in `FIELDS` in `src/commands/gate.ts`, and the same meanings are in the description of
+`agents/coder.md`, which is the text read before spawning:
+
+- **Idea:** how the thing works and what it is made of, in a few sentences.
+- **Spine:** committed paths of the base shapes and worked example to build on, or the surrounding code for a change inside an existing shape.
+- **Slot:** the one piece this agent builds.
+- **Reuse:** the existing helpers and libraries to use.
+- **Done:** the condition that proves it finished.

@@ -1,17 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
+import { Exit } from "../../src/lib/base-command.ts";
 import { TasteCommand } from "../../src/commands/taste.ts";
-import { setEnv, tempFolder } from "../helpers/env.ts";
-import { fakeInvocation, writeFiles } from "../helpers/temp-repo.ts";
+import { isolatedPlugin } from "../helpers/sandbox.ts";
+import { fakeInvocation } from "../helpers/temp-repo.ts";
 
-function isolated(t: Parameters<typeof setEnv>[0]) {
-  const plugin = tempFolder();
-  const config = tempFolder();
-  writeFiles(plugin, { "taste/style.md": "one voice\n" });
-  setEnv(t, { CLAUDE_PLUGIN_ROOT: plugin, XDG_CONFIG_HOME: config });
-  return join(config, "coherence", "taste-log.md");
+function isolated(t: TestContext) {
+  return join(isolatedPlugin(t, { "taste/style.md": "one voice\n" }), "coherence", "taste-log.md");
 }
 
 test("prints the shipped style alone when there is no personal log", async (t) => {
@@ -35,7 +32,7 @@ test("an unknown verb, or a verdict with no finding, prints the usage and exits 
   isolated(t);
   for (const args of [["maybe", "x"], ["accepted"]]) {
     const invocation = fakeInvocation(process.cwd(), args);
-    assert.equal(await new TasteCommand().execute(invocation), 2);
-    assert.match(invocation.printed[0], /^usage: coherence taste/);
+    assert.equal(await new TasteCommand().execute(invocation), Exit.usage);
+    assert.match(invocation.errors[0], /^usage: coherence taste/);
   }
 });

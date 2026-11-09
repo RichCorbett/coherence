@@ -8,6 +8,6 @@ export class ArchitectureDocCheck extends BaseCheck {
 
   async run(repo: Repo): Promise<Finding[]> {
     if (await repo.exists(DOC)) return [];
-    return [this.finding(DOC, "missing; write one that walks a request end to end through the modules")];
+    return [this.finding(DOC, "missing; write one that walks a request end to end through the modules", { scope: "repo" })];
   }
 }
