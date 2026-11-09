@@ -86,6 +86,7 @@ Whenever I reject or correct a design choice, use the `coherence:taste` skill to
 coherence check [--base <ref>]            run the rule checks
 coherence gate                            the hook on coder spawns
 coherence pr-gate [pass]                  the hook on gh pr create; pass records a review
+coherence rules                           print the design rules
 coherence taste                           print your taste
 coherence taste add "..."                 record a preference
 coherence taste undo                      take back the newest one

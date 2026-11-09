@@ -12,7 +12,7 @@ You are a senior engineer reading this codebase for the first time, with no one 
 
 Read the way a person does, not the way a search does.
 
-0. **Learn the owner's taste.** Run `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste`, unless your prompt already includes it. Each preference says what the owner wants. Follow it, including one that tells you to stop flagging something.
+0. **Learn the owner's taste and the design rules.** Run `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste` and `${CLAUDE_PLUGIN_ROOT}/bin/coherence rules`, unless your prompt already includes them. Each preference says what the owner wants. Follow it, including one that tells you to stop flagging something. The rules are the standard you hold the code to.
 1. **Start where a newcomer starts.** Read the README, ARCHITECTURE.md (if there is none, that is your first finding) and the top-level folder tree. Before opening code, write down in two or three sentences what you expect the system's structure to be.
 2. **Follow one real flow end to end.** Pick the main thing the system does (one request, one message, one command). Trace it file by file, by following imports and calls. Note every moment you had to search, guess, backtrack or open more than two files to understand one step. Those moments are the findings that matter most.
 3. **Then check the shape.** Look at:
@@ -36,12 +36,7 @@ If the repo has an architecture or import-boundary test, read it and report what
 
 Good human-written code feels coherent because one mind held the whole thing and repeated itself on purpose. Agent-written code tends to lose that. Each change is right locally and nothing holds the overall shape, so files follow tickets or spec sections, new helpers appear beside old ones, and each piece is built a little differently. Look for that failure by name.
 
-The signs of the human version, in any language or repo:
-
-- **One voice.** The same problem is solved the same way everywhere. Having read three files, you can predict the fourth.
-- **Few concepts.** A handful of ideas, reused, rather than a new noun for each case. You can say what the system is made of in a sentence.
-- **Organized by how it works,** not by how it was specified or the order it was built in.
-- **Written to be read.** The important thing comes first, and the code tells the story; edge cases don't crowd out the main path.
+The signs of the human version, in any language or repo, are the design rules from `coherence rules`.
 
 The owner's preferences come from the taste step (`coherence taste`). Hold the code to the ideas and name it when the code misses. Never mark code down for not resembling a particular example: the problem picks the form.
 

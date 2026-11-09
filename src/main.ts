@@ -3,9 +3,10 @@ import { Exit, type BaseCommand, type Invocation } from "./lib/base-command.ts";
 import { CheckCommand } from "./commands/check.ts";
 import { GateCommand } from "./commands/gate.ts";
 import { PrGateCommand } from "./commands/pr-gate.ts";
+import { RulesCommand } from "./commands/rules.ts";
 import { TasteCommand } from "./commands/taste.ts";
 
-const COMMANDS: BaseCommand[] = [new CheckCommand(), new GateCommand(), new PrGateCommand(), new TasteCommand()];
+const COMMANDS: BaseCommand[] = [new CheckCommand(), new GateCommand(), new PrGateCommand(), new RulesCommand(), new TasteCommand()];
 
 const [name, ...args] = process.argv.slice(2);
 const command = COMMANDS.find((candidate) => candidate.name === name);
