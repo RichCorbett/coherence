@@ -1,0 +1,5 @@
+{
+  "name": "coherence-local",
+  "owner": { "name": "Greg" },
+  "plugins": [{ "name": "coherence", "source": "./", "description": "Coherent agent-written code." }]
+}

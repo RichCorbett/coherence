@@ -1,0 +1,12 @@
+#!/bin/sh
+# Claude Code may reach this through a symlink, so resolve to the real plugin directory first.
+f="$0"
+while [ -L "$f" ]; do
+  d=$(cd "$(dirname "$f")" && pwd)
+  l=$(readlink "$f")
+  case "$l" in
+    /*) f="$l" ;;
+    *) f="$d/$l" ;;
+  esac
+done
+exec node "$(cd "$(dirname "$f")" && pwd)/../src/main.ts" "$@"

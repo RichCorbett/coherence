@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { FileSizeCheck } from "../../src/checks/file-size.ts";
+import { tempRepo } from "../helpers/temp-repo.ts";
+
+test("flags a source file over the limit and ignores a short one", async () => {
+  const repo = await tempRepo({ "long.ts": "x\n".repeat(400), "short.ts": "x\n" });
+  const findings = await new FileSizeCheck().run(repo);
+  assert.deepEqual(findings.map((finding) => finding.path), ["long.ts"]);
+});
+
+test("does not hold fixtures to the limit", async () => {
+  const repo = await tempRepo({ "tests/fixtures/long.ts": "x\n".repeat(400) });
+  assert.deepEqual(await new FileSizeCheck().run(repo), []);
+});
