@@ -32,9 +32,7 @@ export class GateCommand extends BaseCommand {
       `Brief refused by coherence: ${problems.join("; ")}. ` +
       "Write and commit the spine first (the base shapes and a worked example the new code must build on), " +
       `then brief again with all five fields, each starting a line: ${format}.`;
-    invocation.print(
-      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } }),
-    );
+    this.deny(invocation, reason);
     return Exit.ok;
   }
 }

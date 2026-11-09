@@ -15,7 +15,7 @@ for fit.** That gives four moments, each with one job:
 | --- | --- |
 | Gate | `hooks/hooks.json`, `agents/coder.md`, `src/commands/gate.ts` |
 | Rules | `src/commands/check.ts`, `src/checks/` |
-| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/second-opinion.ts`, `taste/` |
+| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/second-opinion.ts`, `src/commands/pr-gate.ts`, `taste/` |
 | Learning | `skills/taste/SKILL.md`, `src/commands/taste.ts`, `src/lib/taste.ts` |
 
 An eval measures whether moment 3 actually finds what it should. `evals/` is run by Claude Code's own
@@ -48,7 +48,8 @@ must-fix, so no reader spends attention on what a rule can catch. Then two reade
 rubric: the `readability-reviewer` subagent, and `coherence second-opinion`, which sends the reviewer's prompt plus the
 owner's taste to Codex (exit `Exit.unavailable` means Codex is not installed, and the review goes on with one reader).
 The skill merges them: a problem both raise is must-fix, one raised by only one is checked by reading the code and
-promoted or dropped with a reason. When the owner accepts or rejects a finding, or corrects a design in conversation, the
+promoted or dropped with a reason. The skill then runs `coherence pr-gate pass`, which marks the branch in git config, and
+the `pr-gate` hook refuses `gh pr create` from a branch without that mark. When the owner accepts or rejects a finding, or corrects a design in conversation, the
 `taste` skill records one general line through `coherence taste`, and both readers read it next time. At 40 lines the
 same skill condenses them into rules and archives the originals.
 

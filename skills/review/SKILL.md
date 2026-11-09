@@ -12,5 +12,5 @@ The argument is the base ref to compare against. With no argument, review the wh
 3. **Merge.** Their mistakes differ, so agreement is the signal:
    - Both raise the same problem: must-fix.
    - Only one raises it: read the code yourself and either promote it to must-fix or drop it with a one-line reason.
-4. **Report** the verdict in a sentence, then must-fix findings with place and concrete fix, then what you dropped and why.
+4. **Report** the verdict in a sentence, then must-fix findings with place and concrete fix, then what you dropped and why. When reviewing a branch, run `${CLAUDE_PLUGIN_ROOT}/bin/coherence pr-gate pass` afterwards, so it can open a pull request.
 5. **Learn.** When the owner accepts or rejects a finding, use the `coherence:taste` skill to record it. This is how both readers learn their taste.

@@ -1,1 +1,27 @@
-{"hooks":{"PreToolUse":[{"matcher":"Agent","hooks":[{"type":"command","command":"\"${CLAUDE_PLUGIN_ROOT}/bin/coherence\" gate","timeout":30}]}]}}
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/coherence\" gate",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(*gh pr create*)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/coherence\" pr-gate",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

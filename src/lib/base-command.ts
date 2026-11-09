@@ -19,6 +19,13 @@ export abstract class BaseCommand {
 
   /** Returns the process exit code, one of `Exit`. */
   abstract execute(invocation: Invocation): Promise<number>;
+
+  /** Answers a PreToolUse hook by refusing the tool call and telling the agent why. */
+  protected deny(invocation: Invocation, reason: string): void {
+    invocation.print(
+      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } }),
+    );
+  }
 }
 
 /** The repo to review and, when `--base <ref>` was given, the ref its branch left. */

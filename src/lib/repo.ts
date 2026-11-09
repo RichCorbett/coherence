@@ -7,6 +7,10 @@ const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|c|h|cc|cpp|swift)
 // Nobody reads these to follow how the system works, so they are not held to the standard.
 const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
 
+function reviewedKey(branch: string): string {
+  return `branch.${branch}.coherence-reviewed`;
+}
+
 /** The git repository under review. Every check sees the code through this one view. */
 export class Repo {
   readonly root: string;
@@ -42,6 +46,22 @@ export class Repo {
   /** A repo path for another program. Being absolute, a filename starting with `-` cannot be read as an option. */
   absolutePath(path: string): string {
     return join(this.root, path);
+  }
+
+  /** The checked-out branch, or undefined on a detached HEAD. */
+  async currentBranch(): Promise<string | undefined> {
+    const result = await runProcess("git", ["branch", "--show-current"], this.root);
+    return result.stdout.trim() || undefined;
+  }
+
+  // Kept in the repo's own git config, so it stays per clone and per branch and needs no file of ours.
+  async isBranchReviewed(branch: string): Promise<boolean> {
+    return (await runProcess("git", ["config", "--get", reviewedKey(branch)], this.root)).code === 0;
+  }
+
+  async markBranchReviewed(branch: string): Promise<void> {
+    const result = await runProcess("git", ["config", reviewedKey(branch), "true"], this.root);
+    if (result.code !== 0) throw new Error(`git config failed: ${result.stderr.trim()}`);
   }
 
   async exists(path: string): Promise<boolean> {

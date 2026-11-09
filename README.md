@@ -37,7 +37,7 @@ The main agent states the idea and commits the spine: the base shapes and one co
 |---|---|---|
 | Gate | Before a subagent codes | A hook refuses a `coherence:coder` brief that doesn't name its Idea, Spine, Slot, Reuse and Done. The coder then reads the spine and your taste first, and builds on what exists. |
 | Rules | After code is written | `coherence check` catches what needs no judgment. |
-| Judgment | Before merging | `/coherence:review <base>` runs the rules, then two independent reviewers (Claude and Codex) on the same rubric. Problems both raise are must-fix. Problems only one raises get checked by reading the code. |
+| Judgment | Before merging | `/coherence:review <base>` runs the rules, then two independent reviewers (Claude and Codex) on the same rubric. Problems both raise are must-fix. Problems only one raises get checked by reading the code. A hook refuses `gh pr create` from a branch that hasn't had this review. |
 | Learning | Whenever you correct a design | The `coherence:taste` skill records your preference in one line, so later code and reviews follow it. |
 
 ### The rule checks
@@ -82,7 +82,8 @@ Whenever I reject or correct a design choice, use the `coherence:taste` skill to
 
 ```
 coherence check [--base <ref>]            run the rule checks
-coherence gate                            the PreToolUse hook
+coherence gate                            the hook on coder spawns
+coherence pr-gate [pass]                  the hook on gh pr create; pass records a review
 coherence second-opinion [--base <ref>]   ask Codex, using the reviewer's prompt
 coherence taste                           print your taste
 coherence taste add "..."                 record a preference
@@ -93,6 +94,7 @@ coherence taste condense                  replace the rules with stdin and archi
 ## What it can't do
 
 - The gate proves a spine was named, not that it's any good. It only covers `coherence:coder`, so your `CLAUDE.md` has to send coding work there.
+- The PR hook only sees PRs Claude opens with `gh pr create`. It remembers a branch was reviewed, not which commits, and Claude can mark a trivial change as passed.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
 - The evals only measure the reviewer, on tiny samples. They don't show whether the coder's output is better. See `evals/baseline.md`.
 - The reviewers read text from the repo under review, so a hostile repo could try to steer them. Codex is read-only and the Claude reviewer has no edit tools, but it does have Bash, so be careful reviewing code from strangers.
