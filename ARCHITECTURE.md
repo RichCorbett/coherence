@@ -44,8 +44,8 @@ answerable for according to each finding's scope, prints them, and exits `Exit.f
 
 `skills/review/SKILL.md` drives a review of a branch. It first runs `coherence check --base <ref>`; each finding is
 must-fix, so no reader spends attention on what a rule can catch. Then the `readability-reviewer` subagent reads the code
-as a newcomer would. The skill reports its verdict and findings, then runs `coherence pr-gate pass`, which marks the branch in git config, and
-the `pr-gate` hook refuses `gh pr create` from a branch without that mark. When the owner accepts or rejects a finding, or corrects a design in conversation, the
+as a newcomer would. The skill reports its verdict and findings, then runs `coherence pr-gate pass`, which stores the HEAD commit for the branch in git config, and
+the `pr-gate` hook refuses `gh pr create` unless HEAD is still that commit. When the owner accepts or rejects a finding, or corrects a design in conversation, the
 `taste` skill records one general line through `coherence taste`, and the reader reads it next time. At 40 lines the
 same skill condenses them into rules and archives the originals.
 

@@ -41,6 +41,28 @@ test("once the review is recorded the PR opens, for that branch only", async () 
   assert.equal((await runHook(repo.root, "gh pr create --fill")).length, 1);
 });
 
+test("a commit made after the review is refused, and passing again at the new HEAD lets the PR open", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  await pass(repo.root);
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "after the review");
+
+  const [output] = await runHook(repo.root, "gh pr create --fill");
+  assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /commits landed on branch feature after its coherence review/);
+
+  await pass(repo.root);
+  assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
+});
+
+test("a branch-wide mark from an earlier version counts as not reviewed", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  git(repo.root, "config", "branch.feature.coherence-reviewed", "true");
+
+  const [output] = await runHook(repo.root, "gh pr create --fill");
+  assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /has not had a coherence review/);
+});
+
 test("stays out of the way outside a git repository and on a detached HEAD", async () => {
   assert.deepEqual(await runHook(tempFolder(), "gh pr create --fill"), []);
   const repo = await tempRepo({ "a.ts": "x\n" });

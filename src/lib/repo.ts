@@ -14,6 +14,8 @@ function git(args: string[], cwd: string): Promise<ProcessResult> {
   return runProcess("git", [...REFUSE_PLANTED_REPOSITORIES, ...args], cwd);
 }
 
+const COMMIT_SHA = /^[0-9a-f]{40,64}$/;
+
 function reviewedKey(branch: string): string {
   return `branch.${branch}.coherence-reviewed`;
 }
@@ -61,13 +63,22 @@ export class Repo {
     return result.stdout.trim() || undefined;
   }
 
-  // Kept in the repo's own git config, so it stays per clone and per branch and needs no file of ours.
-  async isBranchReviewed(branch: string): Promise<boolean> {
-    return (await git(["config", "--get", reviewedKey(branch)], this.root)).code === 0;
+  async headCommit(): Promise<string> {
+    const result = await git(["rev-parse", "HEAD"], this.root);
+    if (result.code !== 0) throw new Error(`git rev-parse failed: ${result.stderr.trim()}`);
+    return result.stdout.trim();
   }
 
-  async markBranchReviewed(branch: string): Promise<void> {
-    const result = await git(["config", reviewedKey(branch), "true"], this.root);
+  // Kept in the repo's own git config, so it stays per clone and per branch and needs no file of ours.
+  // Earlier versions stored "true" for the whole branch; that is not a commit, so it counts as never reviewed.
+  async reviewedCommit(branch: string): Promise<string | undefined> {
+    const stored = (await git(["config", "--get", reviewedKey(branch)], this.root)).stdout.trim();
+    return COMMIT_SHA.test(stored) ? stored : undefined;
+  }
+
+  /** Records that the commit now at HEAD was reviewed. */
+  async markCommitReviewed(branch: string): Promise<void> {
+    const result = await git(["config", reviewedKey(branch), await this.headCommit()], this.root);
     if (result.code !== 0) throw new Error(`git config failed: ${result.stderr.trim()}`);
   }
 
