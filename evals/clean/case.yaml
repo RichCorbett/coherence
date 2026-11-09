@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: clean
+description: A small tidy bot with no planted defect, to check the reviewer does not invent problems.
+tags: [control]
+runs: 1
+execution:
+  max_turns: 30
+  timeout_seconds: 900
+  allowed_tools: [Agent, Read, Glob, Grep, Bash]
+  prompt: |
+    Use the coherence:readability-reviewer subagent to review this whole repository.
+    Then repeat its report word for word as your final message.
+context:
+  scaffold_script: scaffold.sh

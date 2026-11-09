@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: overbuilt
+description: A small tidy bot whose greet command is wrapped in a Strategy, a factory, an options type and a config file that each have one use.
+tags: [planted]
+runs: 1
+execution:
+  max_turns: 30
+  timeout_seconds: 900
+  allowed_tools: [Agent, Read, Glob, Grep, Bash]
+  prompt: |
+    Use the coherence:readability-reviewer subagent to review this whole repository.
+    Then repeat its report word for word as your final message.
+context:
+  scaffold_script: scaffold.sh
