@@ -27,7 +27,7 @@ Reuse: the backoff in src/lib/client.ts
 Done: the calendar client's tests pass and it adds no new retry code
 ```
 
-Before merging, `/coherence:review main` ends with a verdict: merge, fix first or rework, and why. Tell it a finding is wrong and it won't raise that kind again.
+Before merging, `/coherence:review main` ends with a verdict: merge, fix first or rework, and why. Tell it a finding is wrong and it records that for next time.
 
 ## How it works
 
