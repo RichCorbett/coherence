@@ -63,7 +63,7 @@ Taste is text the coder and the reviewer read before they work. Nothing is train
 
 ## Install
 
-Needs Node 26 or newer, because the TypeScript runs directly with no build step. The checks fetch pinned versions of madge and jscpd through `npx`, so the plugin has no install step of its own.  [gbrain](https://github.com/garrytan/gbrain) is optional too: its code graph lets the reviewer trace dependencies exactly, and without it the reviewer greps the imports.
+Needs Node 26 or newer, because the TypeScript runs directly with no build step. The checks fetch pinned versions of madge and jscpd through `npx`, so the plugin has no install step of its own.
 
 ```sh
 claude plugin marketplace add grreardon/coherence
