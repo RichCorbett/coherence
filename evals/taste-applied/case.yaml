@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: taste-applied
+description: A rejection in the taste log changes what the reviewer raises, without stopping it from finding other defects.
+tags: [taste]
+runs: 3
+execution:
+  max_turns: 30
+  timeout_seconds: 900
+  allowed_tools: [Agent, Read, Glob, Grep, Bash]
+  prompt: |
+    Use the coherence:readability-reviewer subagent to review this whole repository.
+    Then repeat its report word for word as your final message.
+context:
+  scaffold_script: scaffold.sh

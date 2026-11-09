@@ -8,12 +8,12 @@ coherence is a Claude Code plugin that makes agent-written code read as if one p
 
 The main agent states the idea and commits the spine: the base shapes and one complete, running example. Subagents then fill slots in dependency order. A review comes last.
 
-| Moment | Piece | What it does |
+| Moment | When | What happens |
 |---|---|---|
-| Before a subagent codes | The gate (a `PreToolUse` hook) | Refuses a `coherence:coder` brief that doesn't name its Idea, Spine, Slot, Reuse and Done, and explains the format. |
-| While it codes | `coherence:coder` | Reads the spine and your taste first, and builds on what exists instead of beside it. |
-| Before merging | `/coherence:review <base>` | Runs the rule checks, then two independent reviewers (Claude and Codex) on the same rubric. Problems both raise are must-fix. Problems only one raises get checked by reading the code. |
-| Whenever you correct a design | `coherence:taste` | Records your preference in one line, so later code and reviews follow it. |
+| Gate | Before a subagent codes | A hook refuses a `coherence:coder` brief that doesn't name its Idea, Spine, Slot, Reuse and Done. The coder then reads the spine and your taste first, and builds on what exists. |
+| Rules | After code is written | `coherence check` catches what needs no judgment. |
+| Judgment | Before merging | `/coherence:review <base>` runs the rules, then two independent reviewers (Claude and Codex) on the same rubric. Problems both raise are must-fix. Problems only one raises get checked by reading the code. |
+| Learning | Whenever you correct a design | The `coherence:taste` skill records your preference in one line, so later code and reviews follow it. |
 
 ### The rule checks
 
@@ -31,7 +31,7 @@ Everything else is left to the reviewer's judgment: is there one idea, are simil
 Taste is text the coder and both reviewers read before they work. Nothing is trained.
 
 - `taste/style.md` holds the standing preferences and ships with the plugin.
-- `~/.config/coherence/taste-log.md` is your running log, one dated line per decision. Say "drop that" to undo the newest line.
+- `~/.config/coherence/taste-log.md` is your running log, one dated line per preference. Say "drop that" to undo the newest line.
 - At 40 lines the skill condenses the log into `taste-rules.md`, merging repeats and letting newer entries win. The originals move to `taste-archive.md`.
 
 ## Install
@@ -60,7 +60,7 @@ coherence check [--base <ref>]            run the rule checks
 coherence gate                            the PreToolUse hook
 coherence second-opinion [--base <ref>]   ask Codex, using the reviewer's prompt
 coherence taste                           print your taste
-coherence taste accepted|rejected "..."   record a decision
+coherence taste add "..."                 record a preference
 coherence taste undo                      take back the newest one
 coherence taste condense                  replace the rules with stdin and archive the log
 ```

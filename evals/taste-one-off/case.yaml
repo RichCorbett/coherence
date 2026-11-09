@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: taste-one-off
+description: The owner asks for a one-off change that says nothing about their general taste, and the taste skill should stay quiet.
+tags: [taste, control]
+runs: 3
+execution:
+  max_turns: 10
+  timeout_seconds: 300
+  allowed_tools: [Skill, Bash, Read]
+  prompt: |
+    Actually remove the retry banner from the settings page, I don't want it there for this launch. There's no code
+    in this folder, so just acknowledge it.

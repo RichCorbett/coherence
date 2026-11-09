@@ -4,17 +4,19 @@
 
 Agent-written code loses coherence because each agent sees one slice and nobody holds the whole. This plugin puts
 one idea around every agent: **the shape is set first, each piece must build on it, and what comes back is checked
-for fit.** That gives three moments, each with one job:
+for fit.** That gives four moments, each with one job:
 
 1. **Before a subagent starts:** the gate refuses a coding brief that has no spine to build on.
 2. **After code is written, by rule:** checks catch what needs no judgment (cycles, duplication, flat folders, a missing architecture doc).
 3. **After code is written, by judgment:** two reviewers from different vendors read it as a newcomer would.
+4. **Whenever the owner corrects a design:** the taste skill records it, so the coder and both reviewers follow it next time.
 
 | Moment | Files |
 | --- | --- |
 | Gate | `hooks/hooks.json`, `agents/coder.md`, `src/commands/gate.ts` |
 | Rules | `src/commands/check.ts`, `src/checks/` |
-| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/second-opinion.ts`, `taste/`, `skills/taste/SKILL.md` |
+| Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `src/commands/second-opinion.ts`, `taste/` |
+| Learning | `skills/taste/SKILL.md`, `src/commands/taste.ts`, `src/lib/taste.ts` |
 
 An eval measures whether moment 3 actually finds what it should. `evals/` is run by Claude Code's own
 `claude plugin eval`: it is case files (fixture repos and graders) with no runner of ours.
@@ -49,6 +51,16 @@ The skill merges them: a problem both raise is must-fix, one raised by only one 
 promoted or dropped with a reason. When the owner accepts or rejects a finding, or corrects a design in conversation, the
 `taste` skill records one general line through `coherence taste`, and both readers read it next time. At 40 lines the
 same skill condenses them into rules and archives the originals.
+
+## One correction, end to end
+
+The owner says something like "stop adding barrel files." The `taste` skill fires on its description, checks the
+preference isn't already known, and runs `coherence taste add` with one general line that says what the owner wants.
+`lib/taste.ts` appends it, dated, to `taste-log.md` in the owner's config folder, outside the plugin so it survives an
+update. The next `coherence taste` prints the shipped style, then the condensed rules, then the log, and that is what
+the coder and both reviewers read. At 40 entries the command says the log is full, and the skill writes new rules from
+the old rules and the entries. `coherence taste condense` replaces `taste-rules.md` and moves the entries to
+`taste-archive.md`.
 
 ## One coder spawn, end to end
 

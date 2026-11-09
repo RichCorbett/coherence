@@ -4,28 +4,29 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { readPluginFile } from "./plugin-files.ts";
 
-export const VERDICTS = ["accepted", "rejected"] as const;
-export type Verdict = (typeof VERDICTS)[number];
+const RULES_HEADING = "## Rules condensed so far";
+const ENTRIES_HEADING = "## Entries not yet condensed";
 
-/** The owner's taste: the style the plugin ships, the rules condensed so far, then the entries not yet condensed. */
+/** The owner's taste: the style the plugin ships, then their preferences, each kind under its own heading. */
 export async function readTaste(): Promise<string> {
-  const parts = [await readPluginFile("taste/style.md")];
-  for (const path of [rulesPath(), logPath()]) {
-    if (existsSync(path)) parts.push(await readFile(path, "utf8"));
+  const parts = [(await readPluginFile("taste/style.md")).trim()];
+  // Condensing replaces only the rules, so a reader must be able to tell where each part starts.
+  for (const [heading, path] of [[RULES_HEADING, rulesPath()], [ENTRIES_HEADING, logPath()]]) {
+    if (existsSync(path)) parts.push(`${heading}\n\n${(await readFile(path, "utf8")).trim()}`);
   }
-  return `${parts.map((part) => part.trim()).filter(Boolean).join("\n\n")}\n`;
+  return `${parts.join("\n\n")}\n`;
 }
 
-/** Records one decision and returns how many entries now wait to be condensed. */
-export async function appendTaste(verdict: Verdict, finding: string): Promise<number> {
+/** Records one preference as a dated entry and returns how many entries now wait to be condensed. */
+export async function appendTaste(preference: string): Promise<number> {
   await mkdir(dirname(logPath()), { recursive: true });
   const today = new Date().toISOString().slice(0, 10);
-  await appendFile(logPath(), `- ${today} ${verdict}: ${finding}\n`);
+  await appendFile(logPath(), `- ${today} ${preference}\n`);
   return (await readEntries()).length;
 }
 
 /** Removes the newest entry and returns it, or undefined when the log is empty. */
-export async function undoLastEntry(): Promise<string | undefined> {
+export async function undoLastTaste(): Promise<string | undefined> {
   const entries = await readEntries();
   const last = entries.pop();
   if (last !== undefined) await writeFile(logPath(), asLines(entries));

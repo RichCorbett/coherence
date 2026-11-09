@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: taste-capture
+description: The owner rejects a design in passing, in a way that should carry over, and the taste skill should fire without being named.
+tags: [taste]
+runs: 3
+execution:
+  max_turns: 10
+  timeout_seconds: 300
+  allowed_tools: [Skill, Bash, Read]
+  prompt: |
+    You added an index.ts to the notifier folder that only re-exports the other files. I hate those barrel files.
+    Stop adding them, importing from the file itself is fine. There's no code in this folder, so just acknowledge it.
