@@ -41,6 +41,14 @@ test("sends the reviewer body, taste and scope to codex read-only, and prints it
   assert.doesNotMatch(recorded, /name: readability-reviewer/);
 });
 
+test("codex gets its answer through even though it waits for stdin to end before starting", async (t) => {
+  isolated(t, `/bin/cat > /dev/null; ${WRITES_ANSWER}`);
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  const invocation = fakeInvocation(repo.root);
+  assert.equal(await new SecondOpinionCommand().execute(invocation), Exit.ok);
+  assert.deepEqual(invocation.printed, ["CANNED REVIEW"]);
+});
+
 test("reviews the whole repository when no base is given", async (t) => {
   const record = isolated(t, WRITES_ANSWER);
   const repo = await tempRepo({ "a.ts": "x\n" });

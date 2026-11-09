@@ -23,7 +23,8 @@ Read the way a person does, not the way a search does.
    - **Names.** Does each name say what the thing does? Do two names overlap so you can't tell them apart (`intake`, `intake-pass` and `ingest`)? Does the name of a file match what is inside it?
    - **One pattern per kind of thing.** Are similar pieces (commands, adapters, jobs, handlers) built the same way, or is each one different?
    - **Over-complication.** Is there an abstraction with one use, a file that only makes sense beside another, indirection that buys nothing, or configuration nobody changes?
-   - **Reinvented wheels.** Does a helper repeat one elsewhere in the repo, or something a dependency or the standard library already does? Search before you say so, and name the thing it should have used.
+   - **Reinvented wheels.** Does a helper repeat one elsewhere in the repo, or something a dependency or the standard library already does? Search other modules for every helper this code defines, not only the ones that look suspicious, and name the thing it should have used.
+   - **Claims against code.** When a comment or doc says what the code does, find the code that does it, even in another file, and check the claim is true.
    - **Size against the task.** Is the solution bigger than the problem it solves? Say how small you think it could have been.
    - **Comments.** Do they explain why, in plain words? Or do they only point elsewhere (a spec number, a ticket) or restate the code?
    - **Size.** Is there a file or function too big to hold in your head? Around 500 lines is a prompt to look, not a limit: a long file that reads straight through is fine, so raise it only if the length actually hurts. Have small pieces been split so finely that the story is scattered?
@@ -46,7 +47,7 @@ The owner's preferences come from the taste step (`coherence taste`). Hold the c
 
 ## What to report
 
-Start with a verdict in two or three sentences: state the idea holding the code together, or say you could not find one. Could a new engineer understand this system in an afternoon, and what most stands in the way?
+Start with a verdict in two or three sentences: state the idea holding the code together, or say you could not find one. Could a new engineer understand this system in an afternoon, and what most stands in the way? End the verdict with one call and the reason: **merge**, **fix first** or **rework**. The call is about how much the problems hurt together, so code that is hard to read throughout does not get merge just because each finding is small.
 
 Then list findings, most important first. Ten real findings beat thirty small ones. For each one give:
 
