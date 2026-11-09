@@ -5,7 +5,11 @@ import { Exit } from "../../src/lib/base-command.ts";
 import { writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
-const LONG = "x\n".repeat(400);
+const CYCLE = {
+  "src/a/a.ts": 'import { b } from "./b.ts";\nexport const a = b;\n',
+  "src/a/b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
+};
+const DOC = { "ARCHITECTURE.md": "# Architecture\n" };
 
 async function commitBranchChange(root: string, files: Record<string, string>): Promise<void> {
   git(root, "checkout", "-q", "-b", "work");
@@ -15,22 +19,22 @@ async function commitBranchChange(root: string, files: Record<string, string>): 
 }
 
 test("exits with findings and names the finding when the repo breaks a rule", async () => {
-  const repo = await tempRepo({ "src/a/long.ts": LONG });
+  const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
   const invocation = fakeInvocation(repo.root);
   assert.equal(await new CheckCommand().execute(invocation), Exit.findings);
-  assert.match(invocation.printed[0], /^src\/a\/long\.ts \[file-size\]/);
+  assert.match(invocation.printed[0], /^ARCHITECTURE\.md \[architecture-doc\]/);
 });
 
 test("with --base, reports only files the branch changed", async () => {
-  const repo = await tempRepo({ "src/a/old-long.ts": LONG, "ARCHITECTURE.md": "# Architecture\n" });
-  await commitBranchChange(repo.root, { "src/a/new-short.ts": "x\n" });
+  const repo = await tempRepo({ ...CYCLE, ...DOC });
+  await commitBranchChange(repo.root, { "src/a/new.ts": "export const fresh = 1;\n" });
   const invocation = fakeInvocation(repo.root, ["--base", "main"]);
   assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
 });
 
 test("with --base, a file of the same name in another folder is not the changed file", async () => {
-  const repo = await tempRepo({ "src/a/long.ts": LONG, "ARCHITECTURE.md": "# Architecture\n" });
-  await commitBranchChange(repo.root, { "src/b/long.ts": "x\n" });
+  const repo = await tempRepo({ ...CYCLE, ...DOC });
+  await commitBranchChange(repo.root, { "src/b/a.ts": "export const other = 1;\n" });
   assert.equal(await new CheckCommand().execute(fakeInvocation(repo.root, ["--base", "main"])), Exit.ok);
 });
 

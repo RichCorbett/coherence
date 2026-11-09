@@ -7,7 +7,7 @@ one idea around every agent: **the shape is set first, each piece must build on 
 for fit.** That gives three moments, each with one job:
 
 1. **Before a subagent starts:** the gate refuses a coding brief that has no spine to build on.
-2. **After code is written, by rule:** checks catch what needs no judgment (cycles, duplication, oversized files).
+2. **After code is written, by rule:** checks catch what needs no judgment (cycles, duplication, flat folders, a missing architecture doc).
 3. **After code is written, by judgment:** two reviewers from different vendors read it as a newcomer would.
 
 | Moment | Files |

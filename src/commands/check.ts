@@ -4,11 +4,9 @@ import { BaseCommand, Exit, openReviewTarget, type Invocation } from "../lib/bas
 import { ArchitectureDocCheck } from "../checks/architecture-doc.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
-import { FileSizeCheck } from "../checks/file-size.ts";
 import { FlatFolderCheck } from "../checks/flat-folder.ts";
 
 const CHECKS: BaseCheck[] = [
-  new FileSizeCheck(),
   new CyclesCheck(),
   new DuplicatesCheck(),
   new FlatFolderCheck(),
