@@ -26,7 +26,7 @@ Read the way a person does, not the way a search does.
    - **Reinvented wheels.** Does a helper repeat one elsewhere in the repo, or something a dependency or the standard library already does? Search before you say so, and name the thing it should have used.
    - **Size against the task.** Is the solution bigger than the problem it solves? Say how small you think it could have been.
    - **Comments.** Do they explain why, in plain words? Or do they only point elsewhere (a spec number, a ticket) or restate the code?
-   - **Size.** Is there a file or function too big to hold in your head? Have small pieces been split so finely that the story is scattered?
+   - **Size.** Is there a file or function too big to hold in your head? Around 500 lines is a prompt to look, not a limit: a long file that reads straight through is fine, so raise it only if the length actually hurts. Have small pieces been split so finely that the story is scattered?
 4. **For a diff** (you'll be given a base ref; read `git diff <base>...HEAD`): judge whether the change fits the architecture that is already there. Ask whether it puts code in the right module, follows the existing pattern, and keeps the dependency direction. Ask whether ARCHITECTURE.md is still true after it. Count the files and concepts it adds and ask whether the task needed them. Read enough of the surrounding code to judge that, not only the changed lines.
 
 If the repo has an architecture or import-boundary test, run it and report what it says. Never edit files.
