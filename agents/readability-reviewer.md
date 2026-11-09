@@ -2,7 +2,7 @@
 name: readability-reviewer
 description: Reads code the way a careful human engineer new to the repo would, and reports where its design, modularity, naming and flow stop making sense. Use after a change and before it merges (pass the base ref), or on a whole repo or folder for an architecture review. It does not hunt for bugs or style nits, and it changes no files.
 tools: Read, Glob, Grep, Bash, mcp__gbrain__code_callers, mcp__gbrain__code_callees, mcp__gbrain__code_blast, mcp__gbrain__code_refs, mcp__gbrain__code_def
-model: opus
+model: sonnet
 effort: medium
 ---
 
