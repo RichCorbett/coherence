@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: reinvented
+description: A small tidy bot where one command re-implements an existing helper and another hand-rolls a standard library call.
+tags: [planted]
+runs: 1
+execution:
+  max_turns: 30
+  timeout_seconds: 900
+  allowed_tools: [Agent, Read, Glob, Grep, Bash]
+  prompt: |
+    Use the coherence:readability-reviewer subagent to review this whole repository.
+    Then repeat its report word for word as your final message.
+context:
+  scaffold_script: scaffold.sh
