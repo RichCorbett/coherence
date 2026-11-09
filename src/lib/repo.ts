@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { type ProcessResult, runProcess } from "./process.ts";
 
@@ -76,10 +76,6 @@ export class Repo {
 
   async exists(path: string): Promise<boolean> {
     return access(this.absolutePath(path)).then(() => true, () => false);
-  }
-
-  read(path: string): Promise<string> {
-    return readFile(this.absolutePath(path), "utf8");
   }
 
   private async gitPaths(args: string[]): Promise<string[]> {
