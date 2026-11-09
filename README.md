@@ -80,12 +80,12 @@ coherence taste condense                  replace the rules with stdin and archi
 
 - The PR hook only sees PRs Claude opens with `gh pr create`. It ties the review to the commit at HEAD, so later commits need a new review, and Claude can mark a trivial change as passed.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
-- The evals measure the reviewer and the taste skill, on tiny samples. They were last run with the reviewer on Opus, before it moved to Sonnet. See `evals/baseline.md`.
+- The evals measure the reviewer and the taste skill, on tiny samples. They were last run with the reviewer on Sonnet. See `evals/baseline.md`.
 - The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools, but it does have Bash, so be careful reviewing code from strangers.
 
 ## How well it works
 
-These results are from the reviewer on Opus, before it moved to Sonnet, at 3 runs per case on tiny sample repos. The Sonnet reviewer has not been measured yet. The full history is in `evals/baseline.md`.
+These results are from the reviewer on Sonnet, at 3 runs per case on tiny sample repos. The full history is in `evals/baseline.md`.
 
 | What was tested | Result |
 |---|---|
@@ -94,7 +94,7 @@ These results are from the reviewer on Opus, before it moved to Sonnet, at 3 run
 | Leaves the good parts alone | 4 of 6 |
 | Records a new preference when you correct a design | 3 of 3 |
 | Stays quiet on a one-off change | 3 of 3 |
-| Follows a recorded preference | 2 of 3 |
+| Follows a recorded preference | 3 of 3 |
 
 ## Develop
 

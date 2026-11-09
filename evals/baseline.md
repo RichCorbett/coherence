@@ -1,6 +1,31 @@
 # Eval baseline
 
-## Latest run
+## Latest run: reviewer on Sonnet, 2026-11-09
+
+3 runs per case, $4.12, Claude Code 2.1.321, `coherence:readability-reviewer` on Sonnet at medium effort, Sonnet judges.
+
+| Case | Grader | Passed |
+|---|---|---|
+| clean | found-no-defect | 3/3 |
+| clean | stated-the-idea | 3/3 |
+| no-shape | found-inconsistent-shapes | 3/3 |
+| no-shape | found-overlapping-names | 3/3 |
+| no-shape | found-ticket-named-file | 3/3 |
+| overbuilt | found-overbuilt | 3/3 |
+| overbuilt | said-how-small | 3/3 |
+| overbuilt | kept-the-good-shape | 2/3 |
+| reinvented | found-duplicate-helper | 3/3 |
+| reinvented | found-standard-library | 3/3 |
+| reinvented | kept-the-good-shape | 2/3 |
+| taste-capture | used-the-skill | 3/3 |
+| taste-capture | recorded-a-general-line | 3/3 |
+| taste-one-off | stayed-quiet | 3/3 |
+| taste-applied | still-found-the-duplicate | 3/3 |
+| taste-applied | honored-the-rejection | 0/3, then 3/3 after the fix below |
+
+In honored-the-rejection the reviewer loaded the preference and then raised the same code from a different angle. The rule added to its report step, to drop every finding about something a preference says not to flag, fixed that in a rerun of that one case, 3 runs for $0.62. The other cases have not been rerun with that rule.
+
+## Previous run: reviewer on Opus
 
 3 runs per case, about $6 in all, on the final reviewer and taste skill.
 

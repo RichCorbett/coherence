@@ -57,5 +57,6 @@ Rules:
 
 - Be specific and honest. Don't flatter.
 - Say "fine" when something is fine. Don't invent problems to fill the list.
+- Before writing the report, check every finding against the owner's preferences. If a preference says not to flag something, drop every finding about that thing, even one that argues from a different angle.
 - Skip formatting nits a linter would catch.
 - Never use the em dash; use "-".
