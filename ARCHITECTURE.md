@@ -27,3 +27,12 @@ Layers go one way, enforced by `tests/architecture.test.ts`: `main.ts` -> `comma
 
 `coherence check --base main` starts in `src/main.ts`, which finds `CheckCommand` by name. The command opens a `Repo`,
 runs every entry in its `CHECKS` list, keeps findings in files the branch changed, prints them, and exits 1 if any remain.
+
+## One coder spawn, end to end
+
+When the main agent spawns a `coder` subagent, Claude Code runs the PreToolUse hook in `hooks/hooks.json`, which calls
+`coherence gate` with the hook JSON on stdin. `GateCommand` ignores every other subagent type. For a coder it reads the
+five brief fields (Idea, Spine, Slot, Reuse, Done) and opens a `Repo` from each spine path's own folder, because the
+target repo can differ from the session's, then asks `repo.isCommitted`. Any problem comes back as one `deny` naming
+all of them, telling the agent to write and commit the spine first; otherwise the gate prints nothing and the spawn
+proceeds. Later, `coherence second-opinion` sends the same reviewer prompt plus the owner's taste (`lib/taste.ts`) to Codex.
