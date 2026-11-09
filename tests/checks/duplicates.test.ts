@@ -13,6 +13,11 @@ test("reports a clone against each file involved, naming the other location", as
   assert.match(findings.find((finding) => finding.path === "one.ts")!.message, /two\.ts:1-40/);
 });
 
+test("a file named like a flag is read as a path, not as an option to the tool", async () => {
+  const repo = await tempRepo({ "--not-an-option.ts": "export const x = 1;\n", "one.ts": `${BLOCK}\n`, "two.ts": `${BLOCK}\n` });
+  assert.equal((await new DuplicatesCheck().run(repo)).length, 2);
+});
+
 test("does not scan fixtures", async () => {
   const repo = await tempRepo({ "tests/fixtures/one.ts": `${BLOCK}\n`, "tests/fixtures/two.ts": `${BLOCK}\n` });
   assert.deepEqual(await new DuplicatesCheck().run(repo), []);

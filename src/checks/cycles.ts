@@ -1,6 +1,6 @@
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
 import { runProcess } from "../lib/process.ts";
-import type { Repo } from "../lib/repo.ts";
+import { asPathArgument, type Repo } from "../lib/repo.ts";
 
 const SCRIPT_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
@@ -16,7 +16,7 @@ export class CyclesCheck extends BaseCheck {
     if (files.length === 0) return [];
 
     // madge exits 1 when it finds cycles, so only a missing JSON answer means it failed.
-    const result = await runProcess("npx", [...MADGE, ...files], repo.root);
+    const result = await runProcess("npx", [...MADGE, ...files.map(asPathArgument)], repo.root);
     let cycles: string[][];
     try {
       cycles = JSON.parse(result.stdout);

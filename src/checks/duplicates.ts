@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
 import { runProcess } from "../lib/process.ts";
-import type { Repo } from "../lib/repo.ts";
+import { asPathArgument, type Repo } from "../lib/repo.ts";
 
 type Side = { name: string; start: number; end: number };
 type Clone = { firstFile: Side; secondFile: Side };
@@ -28,7 +28,7 @@ export class DuplicatesCheck extends BaseCheck {
   private async findClones(repo: Repo, files: string[]): Promise<Clone[]> {
     const output = await mkdtemp(join(tmpdir(), "coherence-jscpd-"));
     try {
-      const result = await runProcess("npx", [...JSCPD, "--output", output, ...files], repo.root);
+      const result = await runProcess("npx", [...JSCPD, "--output", output, ...files.map(asPathArgument)], repo.root);
       if (result.code !== 0) throw new Error(`jscpd failed: ${result.stderr.trim() || result.stdout.trim()}`);
       return JSON.parse(await readFile(join(output, "jscpd-report.json"), "utf8")).duplicates;
     } finally {

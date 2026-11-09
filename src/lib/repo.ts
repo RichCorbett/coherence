@@ -7,6 +7,11 @@ const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|c|h|cc|cpp|swift)
 // Nobody reads these to follow how the system works, so they are not held to the standard.
 const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
 
+/** A repo path safe to hand to another program: a filename starting with `-` must not be read as an option. */
+export function asPathArgument(path: string): string {
+  return `./${path}`;
+}
+
 /** The git repository under review. Every check sees the code through this one view. */
 export class Repo {
   readonly root: string;

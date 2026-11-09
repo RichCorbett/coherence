@@ -22,6 +22,15 @@ test("counts a cycle that exists only through import type", async () => {
   assert.equal((await new CyclesCheck().run(repo)).length, 1);
 });
 
+test("a file named like a flag is read as a path, not as an option to the tool", async () => {
+  const repo = await tempRepo({
+    "--not-an-option.ts": "export const x = 1;\n",
+    "a.ts": 'import { b } from "./b.ts";\nexport const a = b;\n',
+    "b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
+  });
+  assert.equal((await new CyclesCheck().run(repo)).length, 1);
+});
+
 test("passes imports that point one way, and a repo with no script files", async () => {
   const oneWay = await tempRepo({ "a.ts": 'import { b } from "./b.ts";\nexport const a = b;\n', "b.ts": "export const b = 1;\n" });
   assert.deepEqual(await new CyclesCheck().run(oneWay), []);
