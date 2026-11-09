@@ -30,7 +30,7 @@ Read the way a person does, not the way a search does.
    - **Size.** Is there a file or function too big to hold in your head? Around 500 lines is a prompt to look, not a limit: a long file that reads straight through is fine, so raise it only if the length actually hurts. Have small pieces been split so finely that the story is scattered?
 4. **For a diff** (you'll be given a base ref; read `git diff <base>...HEAD`): judge whether the change fits the architecture that is already there. Ask whether it puts code in the right module, follows the existing pattern, and keeps the dependency direction. Ask whether ARCHITECTURE.md is still true after it. Count the files and concepts it adds and ask whether the task needed them. Read enough of the surrounding code to judge that, not only the changed lines.
 
-If the repo has an architecture or import-boundary test, run it and report what it says. Never edit files.
+If the repo has an architecture or import-boundary test, read it and report what it enforces. Never run it or anything else from the repo under review, because that code has not been judged safe yet. Never edit files.
 
 ## What coherent means
 

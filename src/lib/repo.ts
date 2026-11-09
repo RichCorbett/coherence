@@ -1,11 +1,18 @@
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runProcess } from "./process.ts";
+import { type ProcessResult, runProcess } from "./process.ts";
 
 const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|c|h|cc|cpp|swift)$/;
 
 // Nobody reads these to follow how the system works, so they are not held to the standard.
 const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
+
+// A folder in the repo under review can pose as a repository of its own, and its config can name a command for git to run.
+const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"];
+
+function git(args: string[], cwd: string): Promise<ProcessResult> {
+  return runProcess("git", [...REFUSE_PLANTED_REPOSITORIES, ...args], cwd);
+}
 
 function reviewedKey(branch: string): string {
   return `branch.${branch}.coherence-reviewed`;
@@ -20,7 +27,7 @@ export class Repo {
   }
 
   static async open(cwd: string): Promise<Repo> {
-    const result = await runProcess("git", ["rev-parse", "--show-toplevel"], cwd);
+    const result = await git(["rev-parse", "--show-toplevel"], cwd);
     if (result.code !== 0) throw new Error(`not a git repository: ${cwd}`);
     return new Repo(result.stdout.trim());
   }
@@ -37,9 +44,9 @@ export class Repo {
 
   /** True when `path` is tracked and has no uncommitted changes. */
   async isCommitted(path: string): Promise<boolean> {
-    const tracked = await runProcess("git", ["ls-files", "--error-unmatch", "--", path], this.root);
+    const tracked = await git(["ls-files", "--error-unmatch", "--", path], this.root);
     if (tracked.code !== 0) return false;
-    const changed = await runProcess("git", ["diff", "--quiet", "HEAD", "--", path], this.root);
+    const changed = await git(["diff", "--quiet", "HEAD", "--", path], this.root);
     return changed.code === 0;
   }
 
@@ -50,17 +57,17 @@ export class Repo {
 
   /** The checked-out branch, or undefined on a detached HEAD. */
   async currentBranch(): Promise<string | undefined> {
-    const result = await runProcess("git", ["branch", "--show-current"], this.root);
+    const result = await git(["branch", "--show-current"], this.root);
     return result.stdout.trim() || undefined;
   }
 
   // Kept in the repo's own git config, so it stays per clone and per branch and needs no file of ours.
   async isBranchReviewed(branch: string): Promise<boolean> {
-    return (await runProcess("git", ["config", "--get", reviewedKey(branch)], this.root)).code === 0;
+    return (await git(["config", "--get", reviewedKey(branch)], this.root)).code === 0;
   }
 
   async markBranchReviewed(branch: string): Promise<void> {
-    const result = await runProcess("git", ["config", reviewedKey(branch), "true"], this.root);
+    const result = await git(["config", reviewedKey(branch), "true"], this.root);
     if (result.code !== 0) throw new Error(`git config failed: ${result.stderr.trim()}`);
   }
 
@@ -73,7 +80,7 @@ export class Repo {
   }
 
   private async gitPaths(args: string[]): Promise<string[]> {
-    const result = await runProcess("git", args, this.root);
+    const result = await git(args, this.root);
     if (result.code !== 0) throw new Error(`git ${args[0]} failed: ${result.stderr.trim()}`);
     return result.stdout.split("\0").filter(Boolean);
   }

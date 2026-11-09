@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type ProcessResult = { code: number; stdout: string; stderr: string };
@@ -34,7 +34,10 @@ export async function runPinnedTool(args: string[]): Promise<ProcessResult> {
 
 /** Gives `work` an empty folder and removes it afterwards, however `work` ends. */
 export async function withTempFolder<T>(work: (folder: string) => Promise<T>): Promise<T> {
-  const folder = await mkdtemp(join(tmpdir(), "coherence-"));
+  // Not under the system temp folder: npx also searches every parent of its working folder, and other users can write to /tmp.
+  const parent = join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "coherence");
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  const folder = await mkdtemp(join(parent, "run-"));
   try {
     return await work(folder);
   } finally {
