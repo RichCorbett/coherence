@@ -42,7 +42,7 @@ The signs of the human version, in any language or repo:
 - **Organized by how it works,** not by how it was specified or the order it was built in.
 - **Written to be read.** The important thing comes first, and the code tells the story; edge cases don't crowd out the main path.
 
-The owner's concrete examples of this come from the taste step (`coherence taste`). Hold the code to the ideas, and name it when the code misses.
+The owner's preferences come from the taste step (`coherence taste`). Hold the code to the ideas and name it when the code misses. Never mark code down for not resembling a particular example: the problem picks the form.
 
 ## What to report
 

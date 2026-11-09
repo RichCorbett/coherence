@@ -11,23 +11,24 @@ What the owner keeps seeing in AI code, and hates most:
 - No structure. It need not be object-oriented, but it must have a shape you can predict.
 - No progression. Pieces sit side by side instead of each building on the one before.
 
-What good looks like. Well-known examples: every Redis command is a `xxxCommand(client *c)` function, with data types in
-`t_string.c` and `t_list.c`; SQLite's layers each have a documented job. The owner's own hand-written code (two Discord
-bots that share one skeleton, and a language interpreter) shows the same ideas:
+## What good looks like
 
-- **Kinds of things get a folder, one file each, one shape.** `commands/floor.ts` is the `/floor` command and extends
-  `BaseCommand` with an `execute`; `events/ready.ts` extends `BaseEvent`; `cronjobs/sales.ts` is a job. Open one and you
-  have read them all. Adding a feature means adding a file. A 400-line file holding every command misses this.
-- **Dispatch is boring.** A short loop finds the thing by name and runs it. If the path from "something happened" to
-  "the code that handles it" takes more than a glance, say so.
-- **Machinery is apart from what the app does.** `lib/` holds base shapes and a few managers with obvious roles
-  (`DatabaseManager`, `CacheManager`, `Logger`). `bot/` holds the features. Feature code reads as the domain
-  (`interaction.guild.getSettings()`), not as plumbing.
-- **Stages are folders when the program is a pipeline.** The interpreter goes lexer, parser, `AST/`, `Runtime/`.
-- **A well-known pattern, used by name.** The interpreter's Visitor means one header lists everything it can do, which
-  works as a table of contents. Ask whether a reader can find such a table of contents here.
+These are ideas, not a template. The problem picks the form, and code need not resemble any example here. Classes, a
+table of functions, one module per stage, or a single well-organized file can all be coherent. A short script needs
+no folders at all. What matters is that there is one shape and a reader can predict it.
+
+- **Similar things are built the same way.** Having read a few, you can predict the next, and adding one is obvious.
+  Every Redis command is a `xxxCommand(client *c)` function.
+- **Finding the code is easy.** From "something happened" to "the code that handles it" takes a glance.
+- **The parts have jobs you can name.** SQLite's layers each have a documented job. When a program is a pipeline, its
+  stages are visible, as a compiler goes from lexer to parser to tree to runtime.
+- **Plumbing stays out of the story.** Code about what the app does reads as the domain, not as machinery.
 - **Few files, short files, names over comments.** Guard clauses first, then the work, top to bottom. Every file has to
   earn its place.
 
-Take the shape from that code, not its rushed habits, such as `@ts-ignore`, uneven formatting, or network calls written
-inline in a command.
+## Design patterns
+
+Patterns are for recognizing a shape the code already needs, not for adding one. When a problem matches a known
+pattern, use its standard form and its standard name, so a reader knows it on sight. Never add a pattern for a single
+use. A few that often fit: Command when many operations share one way of running, Template Method when one step varies,
+Adapter at the edge of an outside service, Pipeline for stages, Visitor for walking a tree.
