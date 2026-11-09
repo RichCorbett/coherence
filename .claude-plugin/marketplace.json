@@ -1,5 +1,13 @@
 {
-  "name": "coherence-local",
-  "owner": { "name": "Greg" },
-  "plugins": [{ "name": "coherence", "source": "./", "description": "Coherent agent-written code." }]
+  "name": "coherence",
+  "owner": {
+    "name": "grreardon"
+  },
+  "plugins": [
+    {
+      "name": "coherence",
+      "source": "./",
+      "description": "Coherent agent-written code."
+    }
+  ]
 }

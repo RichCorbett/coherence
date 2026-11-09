@@ -1,5 +1,11 @@
 {
   "name": "coherence",
   "version": "0.1.0",
-  "description": "Makes agent-written code read like one person wrote it: a spawn gate, deterministic checks and two independent readability reviewers."
+  "description": "Makes agent-written code read like one person wrote it: a spawn gate, deterministic checks and two independent readability reviewers.",
+  "author": {
+    "name": "grreardon"
+  },
+  "homepage": "https://github.com/grreardon/coherence",
+  "repository": "https://github.com/grreardon/coherence",
+  "license": "MIT"
 }

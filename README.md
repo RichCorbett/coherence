@@ -4,6 +4,31 @@ AI coding agents write code that works and doesn't look good: too many files, he
 
 coherence is a Claude Code plugin that makes agent-written code read as if one person wrote it. One mind sets the shape first, and everything after builds on it.
 
+Early, version 0.1. It's small, and the limits are listed below.
+
+## What it looks like
+
+Ask a subagent to "add a retry helper" with no shape to build on, and the hook stops it before it writes anything:
+
+```
+Brief refused by coherence: the Idea field is missing or empty; the Spine field is missing or empty;
+the Slot field is missing or empty; the Reuse field is missing or empty; the Done field is missing or empty.
+Write and commit the spine first (the base shapes and a worked example the new code must build on),
+then brief again with all five fields, each starting a line
+```
+
+A brief that gets through says what the new code is building on:
+
+```
+Idea: every outbound call goes through one client, and retries live there and nowhere else.
+Spine: src/lib/client.ts, src/lib/weather-client.ts
+Slot: src/lib/calendar-client.ts
+Reuse: the backoff in src/lib/client.ts
+Done: the calendar client's tests pass and it adds no new retry code
+```
+
+Before merging, `/coherence:review main` ends with a verdict: merge, fix first or rework, and why. Tell it a finding is wrong and it won't raise that kind again.
+
 ## How it works
 
 The main agent states the idea and commits the spine: the base shapes and one complete, running example. Subagents then fill slots in dependency order. A review comes last.
@@ -30,7 +55,7 @@ Everything else is left to the reviewer's judgment: is there one idea, are simil
 
 Taste is text the coder and both reviewers read before they work. Nothing is trained.
 
-- `taste/style.md` holds the standing preferences and ships with the plugin.
+- `taste/style.md` is the default opinion the plugin ships with. "The owner" in it means you.
 - `~/.config/coherence/taste-log.md` is your running log, one dated line per preference. Say "drop that" to undo the newest line.
 - At 40 lines the skill condenses the log into `taste-rules.md`, merging repeats and letting newer entries win. The originals move to `taste-archive.md`.
 
@@ -40,7 +65,7 @@ Needs Node 26 or newer, because the TypeScript runs directly with no build step.
 
 ```sh
 claude plugin marketplace add grreardon/coherence
-claude plugin install coherence@coherence-local
+claude plugin install coherence@coherence
 ```
 
 Then add something like this to your `CLAUDE.md`, because it's what makes the agent use the plugin:
@@ -73,12 +98,29 @@ coherence taste condense                  replace the rules with stdin and archi
 - The reviewers read text from the repo under review, so a hostile repo could try to steer them. Codex is read-only and the Claude reviewer has no edit tools, but it does have Bash, so be careful reviewing code from strangers.
 - The reviewer can use gbrain's code graph tools. Without them it greps the imports instead.
 
+## How well it works
+
+These are the latest eval results, 3 runs per case on tiny sample repos. The full history is in `evals/baseline.md`.
+
+| What was tested | Result |
+|---|---|
+| Finds planted defects: reinvented helpers, overbuilt code, inconsistent shapes | 21 of 21 |
+| Says clean code is clean | 3 of 3 |
+| Leaves the good parts alone | 4 of 6 |
+| Records a new preference when you correct a design | 3 of 3 |
+| Stays quiet on a one-off change | 3 of 3 |
+| Follows a recorded preference | 2 of 3 |
+
 ## Develop
 
 `npm run check` runs types, tests, and `coherence check` on this repo. [ARCHITECTURE.md](ARCHITECTURE.md) walks a request through the modules.
 
-Evals, which spend real money (about $4 for the reviewer cases at 3 runs each):
+Evals spend real money, about $6 for all the cases at 3 runs each:
 
 ```sh
 claude plugin eval . --scaffold --runs 3 --trust-plugin --ablation none --no-publish --allow-tools Bash --judge-model sonnet
 ```
+
+## License
+
+MIT
