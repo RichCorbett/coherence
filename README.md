@@ -85,7 +85,7 @@ coherence taste condense                  replace the rules with stdin and archi
 
 ## How well it works
 
-These are the latest eval results, 3 runs per case on tiny sample repos. The full history is in `evals/baseline.md`.
+These results are from the reviewer on Opus, before it moved to Sonnet, at 3 runs per case on tiny sample repos. The Sonnet reviewer has not been measured yet. The full history is in `evals/baseline.md`.
 
 | What was tested | Result |
 |---|---|
