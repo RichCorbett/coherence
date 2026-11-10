@@ -1,10 +1,16 @@
+import { basename } from "node:path";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
+import { shellCommands } from "../lib/shell-commands.ts";
 
-/** Quoted text is an argument and never a command, so it is removed before looking for one. */
-const QUOTED = /'[^']*'|"(?:\\.|[^"\\])*"/g;
-/** The command at the start of the line or after a shell separator, past any environment assignments. */
-const OPENS_PR = /(?:^|[;&|(\n])\s*(?:\w+=\S*\s+)*gh\s+pr\s+create\b/;
+/** Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
+function opensPr(commandLine: string): boolean {
+  return shellCommands(commandLine).some((words) => {
+    const gh = words.findIndex((word) => basename(word) === "gh");
+    const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
+    return pr !== -1 && words[pr + 1] === "create";
+  });
+}
 
 /** Refuses to open a pull request unless the commit at HEAD has had a coherence review, and records when one has. */
 export class PrGateCommand extends BaseCommand {
@@ -17,7 +23,7 @@ export class PrGateCommand extends BaseCommand {
     if (verb !== undefined) return this.refuse(invocation);
 
     const hook = JSON.parse(await invocation.readStdin());
-    if (!OPENS_PR.test(String(hook.tool_input?.command ?? "").replace(QUOTED, ""))) return Exit.ok;
+    if (!opensPr(String(hook.tool_input?.command ?? ""))) return Exit.ok;
 
     // A hook that fails here would break an unrelated command, and with no branch there is nothing to hold to account.
     const repo = await Repo.open(hook.cwd ?? invocation.cwd).catch(() => undefined);

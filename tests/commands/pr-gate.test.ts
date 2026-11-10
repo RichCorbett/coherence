@@ -35,6 +35,42 @@ test("a PR opened after a shell separator or environment assignment is still ref
   }
 });
 
+test("a PR opened through a wrapper, a path, a nested shell or a substitution is still refused", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const command of [
+    `sh -c "gh pr create"`,
+    `bash -lc 'gh pr create'`,
+    `eval "gh pr create"`,
+    "echo `gh pr create`",
+    "command gh pr create",
+    "env gh pr create",
+    "time gh pr create",
+    "nohup gh pr create",
+    "xargs gh pr create",
+    "/usr/bin/gh pr create",
+    "{ gh pr create; }",
+    "if true; then gh pr create; fi",
+    "! gh pr create",
+    `echo "$(gh pr create)"`,
+    "URL=$(gh pr create --fill)",
+    "gh -R o/r pr create",
+  ]) {
+    assert.equal((await runHook(repo.root, command)).length, 1, command);
+  }
+});
+
+test("a heredoc body is not read as commands, and what follows it is", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const command of ["cat > notes <<'EOF'\ngh pr create\nEOF", `git commit -m "$(cat <<'EOF'\nthen gh pr create\nEOF\n)"`]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+  for (const command of ["cat > notes <<EOF\nit's done\nEOF\ngh pr create --title 'x'", "cat <<EOF | gh pr create --body-file -\nbody\nEOF"]) {
+    assert.equal((await runHook(repo.root, command)).length, 1, command);
+  }
+});
+
 test("refuses to open a PR from a branch with no review, and names the branch and the way forward", async (t) => {
   setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
   const repo = await tempRepo({ "a.ts": "x\n" });
