@@ -19,6 +19,22 @@ test("lets every other shell command through without asking git anything", async
   assert.deepEqual(await runHook(tempFolder(), "gh pr list"), []);
 });
 
+test("text that only mentions opening a PR is not refused", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const command of [`git commit -m "run gh pr create later"`, `echo 'gh pr create'`, `grep -rn "gh pr create" src`, `cat notes-about-gh pr create`]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("a PR opened after a shell separator or environment assignment is still refused", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const command of ["gh pr create --fill", "cd sub; gh pr create", "git push | gh pr create", "GH_TOKEN=abc gh pr create", "(gh pr create)", "ls\ngh pr create", `git commit -m "note" && gh pr create`]) {
+    assert.equal((await runHook(repo.root, command)).length, 1, command);
+  }
+});
+
 test("refuses to open a PR from a branch with no review, and names the branch and the way forward", async (t) => {
   setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
   const repo = await tempRepo({ "a.ts": "x\n" });

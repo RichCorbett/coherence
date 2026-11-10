@@ -1,7 +1,10 @@
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
 
-const OPENS_PR = /\bgh\s+pr\s+create\b/;
+/** Quoted text is an argument and never a command, so it is removed before looking for one. */
+const QUOTED = /'[^']*'|"(?:\\.|[^"\\])*"/g;
+/** The command at the start of the line or after a shell separator, past any environment assignments. */
+const OPENS_PR = /(?:^|[;&|(\n])\s*(?:\w+=\S*\s+)*gh\s+pr\s+create\b/;
 
 /** Refuses to open a pull request unless the commit at HEAD has had a coherence review, and records when one has. */
 export class PrGateCommand extends BaseCommand {
@@ -14,7 +17,7 @@ export class PrGateCommand extends BaseCommand {
     if (verb !== undefined) return this.refuse(invocation);
 
     const hook = JSON.parse(await invocation.readStdin());
-    if (!OPENS_PR.test(String(hook.tool_input?.command ?? ""))) return Exit.ok;
+    if (!OPENS_PR.test(String(hook.tool_input?.command ?? "").replace(QUOTED, ""))) return Exit.ok;
 
     // A hook that fails here would break an unrelated command, and with no branch there is nothing to hold to account.
     const repo = await Repo.open(hook.cwd ?? invocation.cwd).catch(() => undefined);
