@@ -61,6 +61,11 @@ export class Repo {
     return result.stdout.trim();
   }
 
+  async branchCommit(branch: string): Promise<string | undefined> {
+    const result = await git(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], this.root);
+    return result.code === 0 ? result.stdout.trim() : undefined;
+  }
+
   // Kept in the repo's own git config, so it stays per clone and per branch and needs no file of ours.
   // Earlier versions stored "true" for the whole branch; that is not a commit, so it counts as never reviewed.
   async reviewedCommit(branch: string): Promise<string | undefined> {

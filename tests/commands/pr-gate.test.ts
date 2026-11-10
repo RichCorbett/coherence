@@ -131,3 +131,33 @@ test("an unknown verb prints the usage and exits 2, and pass needs a branch", as
   git(repo.root, "checkout", "-q", "--detach");
   assert.equal(await pass(repo.root), Exit.usage);
 });
+
+test("a PR for a named branch is judged by that branch, whichever branch this folder is on", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "integration");
+  await pass(repo.root);
+  git(repo.root, "checkout", "-q", "main");
+  for (const command of ["gh pr create --head integration --fill", "gh pr create --head=integration --fill", "gh pr create -H integration --fill"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+
+  git(repo.root, "branch", "unreviewed");
+  const [output] = await runHook(repo.root, "gh pr create --head unreviewed --fill");
+  assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /branch unreviewed has not had a coherence review/);
+});
+
+test("a PR for a named branch is refused when that branch moved after its review", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "integration");
+  await pass(repo.root);
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "after the review");
+  git(repo.root, "checkout", "-q", "main");
+
+  const [output] = await runHook(repo.root, "gh pr create --head integration --fill");
+  assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /commits landed on branch integration after its coherence review/);
+});
+
+test("a named branch that does not exist here cannot be judged and is let through", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  assert.deepEqual(await runHook(repo.root, "gh pr create --head someone:their-branch --fill"), []);
+});

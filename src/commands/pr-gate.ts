@@ -3,16 +3,22 @@ import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
 
-/** Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
-function opensPr(commandLine: string): boolean {
-  return shellCommands(commandLine).some((words) => {
+/** The words after `gh pr create`, or undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
+function prCreateArgs(commandLine: string): string[] | undefined {
+  for (const words of shellCommands(commandLine)) {
     const gh = words.findIndex((word) => basename(word) === "gh");
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
-    return pr !== -1 && words[pr + 1] === "create";
-  });
+    if (pr !== -1 && words[pr + 1] === "create") return words.slice(pr + 2);
+  }
+  return undefined;
 }
 
-/** Refuses to open a pull request unless the commit at HEAD has had a coherence review, and records when one has. */
+function headBranch(args: string[]): string | undefined {
+  const named = args.findIndex((word) => word === "--head" || word === "-H");
+  return named !== -1 ? args[named + 1] : args.find((word) => word.startsWith("--head="))?.slice("--head=".length);
+}
+
+/** Refuses to open a pull request unless the commit it would publish has had a coherence review, and records when one has. */
 export class PrGateCommand extends BaseCommand {
   readonly name = "pr-gate";
   readonly usage = "coherence pr-gate [pass]  (PreToolUse hook on stdin; pass records that the current commit was reviewed)";
@@ -23,16 +29,17 @@ export class PrGateCommand extends BaseCommand {
     if (verb !== undefined) return this.refuse(invocation);
 
     const hook = JSON.parse(await invocation.readStdin());
-    if (!opensPr(String(hook.tool_input?.command ?? ""))) return Exit.ok;
+    const args = prCreateArgs(String(hook.tool_input?.command ?? ""));
+    if (!args) return Exit.ok;
 
     // A hook that fails here would break an unrelated command, and with no branch there is nothing to hold to account.
     const repo = await Repo.open(hook.cwd ?? invocation.cwd).catch(() => undefined);
-    const branch = await repo?.currentBranch();
-    const head = await repo?.headCommit().catch(() => undefined);
-    if (!repo || !branch || !head) return Exit.ok;
+    const branch = headBranch(args) ?? (await repo?.currentBranch());
+    const tip = branch && (await repo?.branchCommit(branch));
+    if (!repo || !branch || !tip) return Exit.ok;
 
     const reviewed = await repo.reviewedCommit(branch);
-    if (reviewed === head) return Exit.ok;
+    if (reviewed === tip) return Exit.ok;
 
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     const coherence = root ? `${root}/bin/coherence` : "coherence";
