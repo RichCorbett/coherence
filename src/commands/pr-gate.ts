@@ -5,7 +5,8 @@ import { COMMIT_SHA, isUsableRef, Repo } from "../lib/repo.ts";
 import { HEREDOC_TEXT, shellCommands, staticWords } from "../lib/shell-commands.ts";
 
 /** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
-const COULD_EXPAND = (word: string) => /[$`*?[{\\]/.test(word);
+/** A word the shell could still change. A trailing `@`, `+` or `!` is an extended glob such as `@(pr)`, which the parser splits at `(`. */
+const COULD_EXPAND = (word: string) => /[$`*?[{\\]|[@+!]$/.test(word);
 const COULD_BE_GH = (word: string) => basename(word) === "gh" || COULD_EXPAND(word);
 
 /** Tokens of the raw line, wherever they sit: in quotes, heredoc bodies or substitutions. A hyphen or word character next to one makes it part of another word. */

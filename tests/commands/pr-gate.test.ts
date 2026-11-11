@@ -118,7 +118,7 @@ test("a PR opened through a wrapper, a path, a nested shell or a substitution is
 test("a PR whose pr or create word is an expansion is refused, and ordinary commands stay allowed", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  for (const command of ["gh pr $'create' --fill", "gh $(echo pr) create --fill", `gh "$P" create`, "gh pr ${C}", "gh -R o/r $(printf pr) create --fill", `gh --repo o/r "$P" create`, "gh pr -R o/r $(printf create) --fill", "env gh pr $'create'", "command gh $(echo pr) create", `time gh "$P" create`, "sudo -u x gh pr ${C}", `/usr/bin/env gh "$P" create`, `/usr/bin/sudo gh pr "$A"`, `sudo -Eu user gh "$P" create`, `A+=x gh "$P" create`, "nice -n 5 gh $(printf pr) create",
+  for (const command of ["gh pr $'create' --fill", "gh $(echo pr) create --fill", `gh "$P" create`, "gh pr ${C}", "gh -R o/r $(printf pr) create --fill", `gh --repo o/r "$P" create`, "gh pr -R o/r $(printf create) --fill", "env gh pr $'create'", "command gh $(echo pr) create", `time gh "$P" create`, "sudo -u x gh pr ${C}", `/usr/bin/env gh "$P" create`, `/usr/bin/sudo gh pr "$A"`, `sudo -Eu user gh "$P" create`, `A+=x gh "$P" create`, "nice -n 5 gh $(printf pr) create", "gh @(pr) create", "gh pr @(create)", "gh pr +(create) --fill",
     // An expandable first word could be gh.
     `"$GH" "$P" create --fill`, `$GH pr "$C" --fill`, `"$GH" --repo o/r "$P" create`, `g[h] "$P" create --fill`, "g[h] pr $(printf create) --fill",
     // A mention of gh next to an expansion is refused, like any other mention.
