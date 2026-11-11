@@ -56,7 +56,7 @@ the originals.
 
 ## One correction, end to end
 
-The owner says something like "stop adding barrel files." The `taste` skill fires on its description, checks the
+The owner says something like "stop splitting things up like this." The `taste` skill fires on its description, checks the
 preference isn't already known, and runs `coherence taste add` with one general line that says what the owner wants.
 `lib/taste.ts` appends it, dated, to `taste-log.md` in the owner's config folder, outside the plugin so it survives an
 update. The next `coherence taste` prints the shipped style, then the condensed rules, then the log, and that is what
