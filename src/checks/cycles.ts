@@ -6,7 +6,8 @@ const SCRIPT_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
 // madge counts `import type` as an import unless told otherwise, which is what we want:
 // a type cycle still ties two files together for the reader.
-const MADGE = ["madge@8.0.0", "--json", "--circular", "--no-spinner"];
+const MADGE = "madge/bin/cli.js";
+const MADGE_ARGS = ["--json", "--circular", "--no-spinner"];
 
 export class CyclesCheck extends BaseCheck {
   readonly name = "cycles";
@@ -17,7 +18,7 @@ export class CyclesCheck extends BaseCheck {
 
     // madge exits 1 when it finds cycles, so only a missing JSON answer means it failed.
     // --basedir makes madge name files relative to the repo root.
-    const result = await runPinnedTool([...MADGE, "--basedir", repo.root, ...files.map((path) => repo.absolutePath(path))]);
+    const result = await runPinnedTool(MADGE, [...MADGE_ARGS, "--basedir", repo.root, ...files.map((path) => repo.absolutePath(path))]);
     let cycles: string[][];
     try {
       cycles = JSON.parse(result.stdout);

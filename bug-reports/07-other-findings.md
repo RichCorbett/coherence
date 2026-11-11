@@ -54,8 +54,8 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 ## Checks and processes
 
 - **MED:** `runProcess` has no timeout, and a failed check does not cancel the others (M).
-- **MED:** `npx --yes madge@8.0.0 / jscpd@5.4.3` pins only the top-level version. Transitive dependencies and their install scripts are fetched per machine (M).
-- **MED:** concurrent `npx` runs race on a cold npm cache. Reproduced 2026-11-11 on a machine that had never fetched the tools: the test suite's first run failed 2 of 41 tests. npm reported `EEXIST: file already exists, symlink ... ~/.npm/_npx/.../node_modules/.bin/parser` and `madge failed: sh: madge: command not found`. The next two runs passed 41 of 41. Two `coherence check` runs started together on a fresh machine fail in the same way. Installing the tools once from a lockfile fixes this together with the unpinned-dependency item above (measured).
+- **Fixed (10e):** `npx --yes madge@8.0.0 / jscpd@5.4.3` pinned only the top-level version. The tools and all their dependencies now install from the plugin's own lockfile (`tools/package-lock.json`) with `npm ci --ignore-scripts`; the locked tree has no install scripts (M).
+- **Fixed (10e):** concurrent `npx` runs raced on a cold npm cache (`EEXIST ... symlink`, then `madge: command not found`). Each first run now installs into its own staging folder and renames it into place, and the loser uses the winner's install; a test starts a second install mid-way through a first (M).
 - **MED:** one argument per file can hit ARG_MAX on big repos. This fails loudly, not as a false pass (M/I).
 - **MED:** in a folder that already has more than 15 files, touching one file makes the whole folder a must-fix for the branch (M).
 - **MED:** madge gets no `--ts-config`, so cycles through path aliases are missed (I).
@@ -65,7 +65,7 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 ## Tests that cannot fail
 
 - **Fixed (08b):** `hostile-repo.test.ts` tested both git flags in one case, so removing either alone still passed. Each flag now has its own plant that only it stops (bare repo + clean filter; nested repo + fsmonitor), and each test asserts the exact outcome, so an early failure no longer passes it. The stdin test now fails instead of hanging.
-- **Refuted:** the claim that the TMPDIR test cannot fail. With npm 10.9.8, npx runs a literal `madge@8.0.0` from an ancestor `node_modules/.bin`, so the test fails when the defense is removed (measured by mutation).
+- **Refuted:** the claim that the TMPDIR test cannot fail. With npm 10.9.8, npx runs a literal `madge@8.0.0` from an ancestor `node_modules/.bin`, so the test fails when the defense is removed (measured by mutation). Since 10e no npx is involved; the test now plants tools and `.madgerc` / `.jscpd.json` in the repo and above TMPDIR, and fails when the tools run from the current folder instead of an empty one (measured by mutation).
 
 ## Docs
 
