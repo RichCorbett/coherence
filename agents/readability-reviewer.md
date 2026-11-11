@@ -24,7 +24,7 @@ Read the way a person does, not the way a search does.
    - **Modules.** Does each folder have one job you can name in a sentence? Is there a flat folder of dozens of files?
    - **Dependency direction.** Do lower layers import higher ones? Are there cycles, type-only ones included? Check by evidence, not by impression: grep over the imports.
    - **Where types live.** Is a type defined by the module that produces the data, or by one that reads it?
-   - **Names.** Does each name say what the thing does? Do two names overlap so you can't tell them apart (`intake`, `intake-pass` and `ingest`)? Does the name of a file match what is inside it?
+   - **Names.** Does each name say what the thing does? Do two names overlap so you can't tell them apart (`sync`, `sync-pass` and `replicate`)? Does the name of a file match what is inside it?
    - **One pattern per kind of thing.** Are similar pieces (commands, adapters, jobs, handlers) built the same way, or is each one different?
    - **Over-complication.** Is there an abstraction with one use, a file that only makes sense beside another, indirection that buys nothing, or configuration nobody changes?
    - **Reinvented wheels.** Does a helper repeat one elsewhere in the repo, or something a dependency or the standard library already does? Search other modules for every helper this code defines, not only the ones that look suspicious, and name the thing it should have used.
