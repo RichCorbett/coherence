@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { test } from "node:test";
-import { installTools, runProcess } from "../../src/lib/process.ts";
+import { installTools, runPinnedTool, runProcess } from "../../src/lib/process.ts";
 import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 
 // The child gives up after 3s by itself, so a missing stdin end fails this test instead of hanging the run.
@@ -12,6 +12,13 @@ const WAITS_FOR_STDIN = "process.stdin.resume(); process.stdin.on('end', () => p
 test("a program that reads stdin sees it end instead of waiting forever", async () => {
   const result = await runProcess(process.execPath, ["-e", WAITS_FOR_STDIN], tmpdir());
   assert.deepEqual(result, { code: 0, stdout: "", stderr: "" });
+});
+
+test("a program still running at its time limit is stopped and the call fails, naming it", async () => {
+  // Exits by itself after 3s, so a missing limit fails this test instead of hanging the run.
+  await assert.rejects(runProcess(process.execPath, ["-e", "setTimeout(() => process.exit(0), 3000);"], tmpdir(), 200), {
+    message: /-e setTimeout.* did not finish within 0\.2s$/,
+  });
 });
 
 test("an install that starts while another is under way gets a complete install, and only one is kept", async (t) => {
@@ -47,8 +54,39 @@ test("installing runs no install script, not even the manifest's own", async (t)
     "package-lock.json": JSON.stringify({ name: "scripted", version: "1.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "scripted", version: "1.0.0" } } }),
   });
 
-  const tools = await installTools(manifest);
-
-  assert.ok(existsSync(tools));
+  // This manifest installs no tools, so it ends as an incomplete install, which shows npm ci itself succeeded.
+  await assert.rejects(installTools(manifest), { message: /are incomplete/ });
   assert.equal(existsSync(ran), false);
+});
+
+test("an install folder that lacks an entry script, or is a symlink, is installed again", async (t) => {
+  setEnv(t, { XDG_CACHE_HOME: tempFolder() });
+  const tools = await installTools();
+
+  rmSync(join(tools, "node_modules/jscpd/run-jscpd.js"));
+  assert.equal(await installTools(), tools);
+  assert.ok(existsSync(join(tools, "node_modules/jscpd/run-jscpd.js")));
+
+  // A symlink to a folder holding both scripts, so only the symlink check can refuse it.
+  const elsewhere = tempFolder();
+  writeFiles(elsewhere, { "node_modules/madge/bin/cli.js": "", "node_modules/jscpd/run-jscpd.js": "" });
+  rmSync(tools, { recursive: true });
+  symlinkSync(elsewhere, tools);
+  assert.equal(await installTools(), tools);
+  assert.equal(lstatSync(tools).isSymbolicLink(), false);
+  assert.ok(existsSync(join(elsewhere, "node_modules/madge/bin/cli.js")), "removing the symlink must not touch what it points at");
+});
+
+test("a failed install is tried again on the next use in the same process", async (t) => {
+  setEnv(t, { XDG_CACHE_HOME: tempFolder() });
+  const stub = tempFolder();
+  writeFiles(stub, { npm: "#!/bin/sh\necho stub npm failed >&2\nexit 1\n" });
+  chmodSync(join(stub, "npm"), 0o755);
+  const path = process.env.PATH ?? "";
+  process.env.PATH = `${stub}:${path}`;
+  t.after(() => (process.env.PATH = path));
+
+  await assert.rejects(runPinnedTool("madge/bin/cli.js", ["--version"]), { message: /stub npm failed/ });
+  process.env.PATH = path;
+  assert.equal((await runPinnedTool("madge/bin/cli.js", ["--version"])).code, 0);
 });
