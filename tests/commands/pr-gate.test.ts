@@ -45,6 +45,13 @@ function recorded(cwd: string, key: string, branch = "feature"): string | undefi
   }
 }
 
+async function reviewedIntegrationBranch() {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "integration");
+  await pass(repo.root);
+  return repo;
+}
+
 const CYCLE = {
   "src/a/a.ts": 'import { b } from "./b.ts";\nexport const a = b;\n',
   "src/a/b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
@@ -511,9 +518,7 @@ test("pass records the head and the base it was given, and a later pass without 
 });
 
 test("a PR for a named branch is judged by that branch, whichever branch this folder is on", async () => {
-  const repo = await tempRepo({ "a.ts": "x\n" });
-  git(repo.root, "checkout", "-q", "-b", "integration");
-  await pass(repo.root);
+  const repo = await reviewedIntegrationBranch();
   git(repo.root, "checkout", "-q", "main");
   for (const command of ["gh pr create --head integration --fill", "gh pr create --head=integration --fill", "gh pr create -H integration --fill"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
@@ -525,9 +530,7 @@ test("a PR for a named branch is judged by that branch, whichever branch this fo
 });
 
 test("a PR for a named branch is refused when that branch moved after its review", async () => {
-  const repo = await tempRepo({ "a.ts": "x\n" });
-  git(repo.root, "checkout", "-q", "-b", "integration");
-  await pass(repo.root);
+  const repo = await reviewedIntegrationBranch();
   git(repo.root, "commit", "-q", "--allow-empty", "-m", "after the review");
   git(repo.root, "checkout", "-q", "main");
 
@@ -673,9 +676,7 @@ test("a word coherence cannot read as an option is refused, since what follows i
 });
 
 test("a head attached to -H is read the way gh reads it", async () => {
-  const repo = await tempRepo({ "a.ts": "x\n" });
-  git(repo.root, "checkout", "-q", "-b", "integration");
-  await pass(repo.root);
+  const repo = await reviewedIntegrationBranch();
   git(repo.root, "checkout", "-q", "main");
   git(repo.root, "branch", "unreviewed");
   for (const command of ["gh pr create -Hintegration --fill", "gh pr create -H=integration --fill", "gh pr create -fHintegration", "gh pr create -dH integration"]) {
@@ -687,9 +688,7 @@ test("a head attached to -H is read the way gh reads it", async () => {
 });
 
 test("a head named more than once is refused as ambiguous", async () => {
-  const repo = await tempRepo({ "a.ts": "x\n" });
-  git(repo.root, "checkout", "-q", "-b", "integration");
-  await pass(repo.root);
+  const repo = await reviewedIntegrationBranch();
   git(repo.root, "branch", "unreviewed");
   for (const command of ["gh pr create --head integration --head unreviewed", "gh pr create -H integration --head=unreviewed", "gh pr create -dHintegration -H unreviewed"]) {
     assert.match(refusal(await runHook(repo.root, command)), /head is named more than once/, command);
