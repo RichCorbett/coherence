@@ -180,6 +180,80 @@ test("a branch-wide mark from an earlier version counts as not reviewed", async 
   assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /has not had a coherence review/);
 });
 
+/** A feature branch two commits past main, so main and HEAD~1 are different bases. */
+async function twoCommitFeature() {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "first");
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "second");
+  return repo;
+}
+
+test("a review against a base lets the PR open when it names the local branch at that base, in any of gh's spellings", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  for (const command of ["gh pr create --base main --fill", "gh pr create -B main --fill", "gh pr create --base=main --fill", "gh pr create -Bmain --fill"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("the PR's base is read as a branch, as gh reads it, so a tag of the same name at the reviewed base does not count", async () => {
+  const repo = await twoCommitFeature();
+  const first = git(repo.root, "rev-parse", "HEAD~1");
+  assert.equal(await pass(repo.root, "--base", first), Exit.ok);
+  git(repo.root, "-c", "tag.gpgSign=false", "tag", "main", first);
+  assert.equal(git(repo.root, "rev-parse", "main"), first);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --base main --fill")), /but the PR's base main is [0-9a-f]{8}, so the PR holds changes the review never read/);
+});
+
+test("a PR base with no local branch, or that is not a plain branch name, is refused, even when it names the reviewed commit", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  const main = git(repo.root, "rev-parse", "main");
+  for (const base of ["nosuch", main, "refs/heads/main"]) {
+    assert.match(refusal(await runHook(repo.root, `gh pr create --base ${base} --fill`)), new RegExp(`the PR's base ${base} has no local branch here.*Fetch or create the local branch`), base);
+  }
+  assert.match(refusal(await runHook(repo.root, "gh pr create --base main:x --fill")), /the PR's base main:x is not a plain branch name/);
+});
+
+test("a PR to a base other than the reviewed one is refused, and says how to fix it", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", git(repo.root, "rev-parse", "HEAD~1")), Exit.ok);
+  const reason = refusal(await runHook(repo.root, "gh pr create --base main --fill"));
+  assert.match(reason, /was reviewed against [0-9a-f]{8}, but the PR's base main is [0-9a-f]{8}/);
+  assert.match(reason, /\/coherence:review <base>.*--base/);
+});
+
+test("a PR that names no base, or names it twice, is refused when the review recorded one", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --fill")), /the PR does not name its base.*--base/);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --base main -B main --fill")), /base is named more than once/);
+});
+
+test("a review of the whole repo records the base as all, so a PR to any base, or none, opens", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root), Exit.ok);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), "all");
+  for (const command of ["gh pr create --fill", "gh pr create --base main --fill", "gh pr create --base nosuch --fill"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("an approval with no recorded base, as earlier versions left it, or with a base that is not a commit, is refused", async () => {
+  const repo = await twoCommitFeature();
+  const head = git(repo.root, "rev-parse", "HEAD");
+  for (const base of [undefined, "", "main", "ALL", head.slice(0, 12)]) {
+    assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+    git(repo.root, "config", "--unset-all", "branch.feature.coherence-reviewed-base");
+    if (base !== undefined) git(repo.root, "config", "branch.feature.coherence-reviewed-base", base);
+    assert.equal(recorded(repo.root, "coherence-reviewed"), head, String(base));
+    for (const command of ["gh pr create --fill", "gh pr create --base main --fill"]) {
+      assert.match(refusal(await runHook(repo.root, command)), /records no base it was reviewed against\. Run \/coherence:review <base> again/, `${base} ${command}`);
+    }
+  }
+});
+
 function refusal(printed: string[]): string {
   assert.equal(printed.length, 1);
   const decision = JSON.parse(printed[0]).hookSpecificOutput;
@@ -401,7 +475,7 @@ test("pass with a base answers only for what the branch changed, as check --base
   assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
 });
 
-test("pass records the head and the base it was given, and a later pass without a base drops the old one", async () => {
+test("pass records the head and the base it was given, and a later pass without a base replaces it with the whole repo", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   const main = git(repo.root, "rev-parse", "main");
   git(repo.root, "checkout", "-q", "-b", "feature");
@@ -414,7 +488,7 @@ test("pass records the head and the base it was given, and a later pass without 
 
   assert.equal(await pass(repo.root), Exit.ok);
   assert.equal(recorded(repo.root, "coherence-reviewed"), head);
-  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), "all");
 });
 
 test("a PR for a named branch is judged by that branch, whichever branch this folder is on", async () => {
@@ -545,6 +619,14 @@ for (const name of ["GH_REPO", "GH_HOST"]) {
 test("a PR pointed at another repository is refused", async () => {
   const repo = await reviewedRepo();
   for (const command of ["gh pr create -R o/r", "gh pr create -Ro/r", "gh pr create -dR o/r", "gh pr create --repo o/r", "gh pr create --repo=o/r"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /--repo points gh at a repository the gate did not check/, command);
+  }
+});
+
+test("a PR to the reviewed base in another repository is refused, since the base is resolved only in this one", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  for (const command of ["gh pr create --repo other/project --base main --fill", "gh pr create -B main -R other/project --fill"]) {
     assert.match(refusal(await runHook(repo.root, command)), /--repo points gh at a repository the gate did not check/, command);
   }
 });
@@ -708,5 +790,5 @@ test("a pass clears every old base value, not only a single one", async () => {
   git(repo.root, "checkout", "-q", "-b", "feature");
   for (const value of ["one", "two"]) git(repo.root, "config", "--add", "branch.feature.coherence-reviewed-base", value);
   assert.equal(await pass(repo.root), Exit.ok);
-  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
+  assert.equal(git(repo.root, "config", "--get-all", "branch.feature.coherence-reviewed-base"), "all");
 });

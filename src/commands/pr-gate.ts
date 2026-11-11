@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
-import { COMMIT_SHA, isUsableRef, Repo } from "../lib/repo.ts";
+import { COMMIT_SHA, isUsableRef, Repo, WHOLE_REPO } from "../lib/repo.ts";
 import { HEREDOC_TEXT, shellCommands, staticWords } from "../lib/shell-commands.ts";
 
 /** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
@@ -167,7 +167,12 @@ export class PrGateCommand extends BaseCommand {
     if (!tip) return this.cannotCheck(invocation, `branch ${branch} has no local commit here. Check out or fetch the branch, then open the PR again`);
 
     const reviewed = await repo.reviewedCommit(branch);
-    if (reviewed === tip) return Exit.ok;
+    if (reviewed === tip) {
+      const why = await this.baseMismatch(repo, branch, args);
+      if (!why) return Exit.ok;
+      this.deny(invocation, `PR refused by coherence: ${why}. Skipping review is the owner's decision, not yours.`);
+      return Exit.ok;
+    }
 
     const why = reviewed ? `commits landed on branch ${branch} after its coherence review` : `branch ${branch} has not had a coherence review`;
     this.deny(
@@ -176,6 +181,33 @@ export class PrGateCommand extends BaseCommand {
         `then open the PR again. Skipping review is the owner's decision, not yours.`,
     );
     return Exit.ok;
+  }
+
+  /**
+   * Why the PR's base is not the one the review read, or undefined when it is. A review of the whole repo covers any base. A
+   * review with no readable base, such as one recorded by an earlier version, cannot say what it covered, so it covers none.
+   * Otherwise the PR must name its base, and that base must be the reviewed one, or the PR would publish a diff the review never read.
+   *
+   * Comparing against the base on GitHub was considered, because the PR's diff is taken from GitHub's branch, not the local one.
+   * It was rejected because the hook would need network calls and credentials to make it, and the remote can still move
+   * between the check and the PR. The base is compared in the local clone; branch protection is the hard enforcement.
+   */
+  private async baseMismatch(repo: Repo, branch: string, args: string[]): Promise<string | undefined> {
+    const reviewedBase = await repo.reviewedBase(branch);
+    if (reviewedBase === WHOLE_REPO) return undefined;
+    if (!reviewedBase) return `the coherence review of branch ${branch} records no base it was reviewed against. Run /coherence:review <base> again with the PR's base`;
+    const short = reviewedBase.slice(0, 8);
+    const again = `Run /coherence:review <base> against the PR's base, or open the PR with --base naming a branch at the reviewed base ${short}`;
+    const named = options(args).found.filter(([name]) => name === "base");
+    if (named.length === 0) return `branch ${branch} was reviewed against ${short}, and the PR does not name its base. ${again}`;
+    if (named.length > 1) return "the PR's base is named more than once. Name it once, with --base <branch>";
+    const base = named[0][1] ?? "";
+    // gh's --base is always a branch, so only the local branch of that name counts; a tag or a commit ID that git would find first does not.
+    if (!isUsableRef(base)) return `the PR's base ${base.slice(0, 80)} is not a plain branch name. ${again}`;
+    const baseId = await repo.branchCommit(base);
+    if (!baseId) return `the PR's base ${base} has no local branch here, so the gate cannot tell whether the review read this diff. Fetch or create the local branch ${base}, then open the PR again`;
+    if (baseId !== reviewedBase) return `branch ${branch} was reviewed against ${short}, but the PR's base ${base} is ${baseId.slice(0, 8)}, so the PR holds changes the review never read. ${again}`;
+    return undefined;
   }
 
   /**
