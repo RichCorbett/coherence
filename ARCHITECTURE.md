@@ -42,7 +42,7 @@ answerable for according to each finding's scope, prints them, and exits `Exit.f
 `skills/review/SKILL.md` drives a review of a branch. It first runs `coherence check --base <ref>`; each finding is
 must-fix, so the reader spends no attention on what a rule can catch. Then the skill runs `coherence taste`, `coherence rules` (which prints `rules/design.md` through
 `readPluginFile`) and the branch diff, and pastes them into the prompt of the `readability-reviewer` subagent. The subagent
-runs on Sonnet with only Read, Glob and Grep, so repo text it reads cannot make it run anything. It reads the code as a
+runs on Sonnet with only Read, Glob and Grep, so repo text it reads cannot make it run anything, though it can still Read any file on disk (agent files cannot limit paths). It reads the code as a
 newcomer would. The skill reports its verdict and findings, then runs
 `coherence pr-gate pass`, which stores the HEAD commit for the branch in git config. The `pr-gate` hook runs before
 `gh pr create` and compares HEAD with that stored commit. If the branch has no stored commit, or HEAD has moved on, it
