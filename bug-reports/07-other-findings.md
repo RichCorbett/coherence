@@ -5,7 +5,7 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 ## Eval validity
 
 - **HIGH: eval answer leak (fixed).** The reviewer's instructions and the design rules used, as their example of overlapping names, the exact file names an eval fixture plants and its grader scores, so a reviewer could pass by pattern-matching. The examples now share no word with any fixture. The names are left out here on purpose, because the reviewer can read this folder (M).
-- **Eval validity, second pass (fixed).** The examples were removed by shape, not only by word: a repeated stem with a suffix plus a synonym, and a file-name cue tied to work-tracking, no longer appear anywhere in the prompts. The rules now state the class in plain words and give no instance (M).
+- **HIGH: eval answer leak, second pass (fixed).** The first fix changed the words of the examples but kept their form. The examples are now removed by form as well; the rules state each class in plain words and give no instance. Described here without detail on purpose (M).
 - **MED:** the fixture `ARCHITECTURE.md` files state, word for word, the answers that `stated-the-idea` and `kept-the-good-shape` look for (M).
 - **MED:** no planted case has a precision grader, so "21 of 21" measures recall only. A report with 30 findings still passes (M).
 - **MED:** `evals/baseline.md:24-26` shows the results table mixes two reviewer configurations, and the judge and the reviewer are both Sonnet (M).
