@@ -99,22 +99,26 @@ export class PrGateCommand extends BaseCommand {
     return Exit.ok;
   }
 
-  /** Records a review only when it approved exactly the commit at HEAD, and the rules still find nothing there. */
+  /**
+   * Records a review only when it approved exactly the commit at HEAD, and the rules still find nothing there.
+   * Every call first revokes the branch's earlier approval, so a later review that does not approve leaves none behind.
+   */
   private async pass(invocation: Invocation): Promise<number> {
+    const repo = await Repo.open(invocation.cwd);
+    const branch = await repo.currentBranch();
+    if (branch) await repo.revokeReview(branch);
+
     const options = passOptions(invocation.args.slice(1));
     if (typeof options === "string") return this.refusePass(invocation, options, Exit.usage);
     const { verdict, head, base } = options;
     if (verdict === undefined || head === undefined) return this.refusePass(invocation, "it needs --verdict and --head", Exit.usage);
-    if (verdict !== "merge") return this.refusePass(invocation, `the verdict was "${verdict}", and only a merge verdict is recorded`);
+    if (verdict !== "merge") return this.refusePass(invocation, `the verdict was "${verdict}", so ${branch ?? "the branch"} is left with no recorded review`);
     if (!COMMIT_SHA.test(head)) return this.refusePass(invocation, `--head must be a full commit ID, not ${head.slice(0, 80)}`, Exit.usage);
-
-    const repo = await Repo.open(invocation.cwd);
-    const branch = await repo.currentBranch();
     if (!branch) return this.refusePass(invocation, "HEAD is detached, so there is no branch to record the review on");
     const current = await repo.headCommit();
     if (head !== current) return this.refusePass(invocation, `HEAD is now ${current}, not the reviewed ${head}. Review again`);
     // The checks read the working tree, so it must hold exactly the reviewed commit.
-    if (await repo.hasUncommittedChanges()) return this.refusePass(invocation, "tracked files have uncommitted changes, so the tree is not the reviewed commit");
+    if (await repo.hasUncommittedChanges()) return this.refusePass(invocation, "the working tree has uncommitted changes or untracked files, so it is not the reviewed commit");
     const baseId = base === undefined ? undefined : await repo.resolveCommit(base);
     // Over the same scope the review used, so the recorded base and the checked base are one commit.
     const checked = await this.check
@@ -126,6 +130,12 @@ export class PrGateCommand extends BaseCommand {
       return this.refusePass(invocation, `checks could not run: ${why}`, Exit.failed);
     }
     if (checked === Exit.findings) return this.refusePass(invocation, "coherence check reports findings, listed above. Fix them and review again");
+    // A commit, checkout or edit while the checks ran means they may not have read the reviewed commit.
+    // A file edited and put back inside that window still slips through; checking a separate worktree would close it, and that is an accepted limit.
+    const after = { branch: await repo.currentBranch(), head: await repo.headCommit(), dirty: await repo.hasUncommittedChanges() };
+    if (after.branch !== branch || after.head !== head || after.dirty) {
+      return this.refusePass(invocation, "the branch, HEAD or working tree changed while the checks ran. Review again");
+    }
 
     await repo.markCommitReviewed(branch, head, baseId);
     invocation.print(`recorded a coherence review for ${branch} at ${head.slice(0, 8)}`);

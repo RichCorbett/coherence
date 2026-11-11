@@ -18,7 +18,7 @@ function git(args: string[], cwd: string): Promise<ProcessResult> {
 const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 
 /** A full commit ID, never an abbreviation that could come to name a different commit. */
-export const COMMIT_SHA = /^[0-9a-f]{40,64}$/;
+export const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 function firstLine(text: string): string {
   return text.trim().split("\n")[0];
@@ -32,7 +32,7 @@ function reviewedBaseKey(branch: string): string {
   return `${reviewedKey(branch)}-base`;
 }
 
-// `git config --unset` exits 5 when the key was never set, which leaves the same result.
+// `git config --unset-all` exits 5 when the key was never set, which leaves the same result.
 const CONFIG_KEY_ABSENT = 5;
 
 /** The git repository under review. Every check sees the code through this one view. */
@@ -106,20 +106,33 @@ export class Repo {
     return COMMIT_SHA.test(stored) ? stored : undefined;
   }
 
-  /** Records that commit `headId` was reviewed, and the base it was reviewed against. A pass without a base drops any older base, so the two always belong to one review. */
+  /** Records that commit `headId` was reviewed, and the base it was reviewed against, as one review. */
   async markCommitReviewed(branch: string, headId: string, baseId?: string): Promise<void> {
-    // The head is what the gate honours, so it is written last: a failed base write leaves no approval behind.
-    const base = await git(baseId ? ["config", reviewedBaseKey(branch), baseId] : ["config", "--unset-all", reviewedBaseKey(branch)], this.root);
-    if (base.code !== 0 && !(baseId === undefined && base.code === CONFIG_KEY_ABSENT)) throw new Error(`git config failed: ${base.stderr.trim()}`);
-    const head = await git(["config", reviewedKey(branch), headId], this.root);
-    if (head.code !== 0) throw new Error(`git config failed: ${head.stderr.trim()}`);
+    // The head is what the gate honours, so the old one goes first and the new one is written last: any failure leaves no approval.
+    await this.revokeReview(branch);
+    if (baseId) await this.setConfig(["config", reviewedBaseKey(branch), baseId]);
+    await this.setConfig(["config", reviewedKey(branch), headId]);
   }
 
-  /** True when a tracked file differs from HEAD, staged or not. Untracked files are not part of any commit, so they do not count. */
+  /** Forgets the branch's recorded review, head before base. */
+  async revokeReview(branch: string): Promise<void> {
+    for (const key of [reviewedKey(branch), reviewedBaseKey(branch)]) {
+      // --unset-all, because plain --unset fails on a key with several values with the same code as on an absent key.
+      const result = await git(["config", "--unset-all", key], this.root);
+      if (result.code !== 0 && result.code !== CONFIG_KEY_ABSENT) throw new Error(`git config failed: ${firstLine(result.stderr)}`);
+    }
+  }
+
+  /** True when the working tree is not exactly HEAD: a changed tracked file, staged or not, or an untracked file that is not ignored. */
   async hasUncommittedChanges(): Promise<boolean> {
-    const result = await git(["status", "--porcelain", "--untracked-files=no"], this.root);
+    const result = await git(["status", "--porcelain"], this.root);
     if (result.code !== 0) throw new Error(`git status failed: ${firstLine(result.stderr)}`);
     return result.stdout.trim() !== "";
+  }
+
+  private async setConfig(args: string[]): Promise<void> {
+    const result = await git(args, this.root);
+    if (result.code !== 0) throw new Error(`git config failed: ${firstLine(result.stderr)}`);
   }
 
   async exists(path: string): Promise<boolean> {
