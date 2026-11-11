@@ -124,6 +124,10 @@ test("a PR whose pr or create word is an expansion is refused, and ordinary comm
   for (const command of [`git commit -m "fix typo"`, "npm test", "git log --oneline", "gh pr view 3", "gh pr list"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
+  // Expansions are everyday arguments; only after a literal gh do they stand in for pr or create.
+  for (const command of ["ls *.ts *.md", "cp $SRC $DST", "echo $A $B", "git diff $BASE $HEAD", `for f in $FILES; do echo "$f"; done`, "gh pr view $(git branch --show-current)", "gh api repos/o/r/pulls/1"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
 });
 
 test("a heredoc that does not mention a PR is not read as one, and a PR after a heredoc is refused", async () => {
