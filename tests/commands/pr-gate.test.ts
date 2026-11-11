@@ -19,11 +19,31 @@ test("lets every other shell command through without asking git anything", async
   assert.deepEqual(await runHook(tempFolder(), "gh pr list"), []);
 });
 
-test("text that only mentions opening a PR is not refused", async () => {
+test("ordinary commands are let through, and a mention of gh pr create, even in quoted text, is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  for (const command of [`git commit -m "run gh pr create later"`, `echo 'gh pr create'`, `grep -rn "gh pr create" src`, `cat notes-about-gh pr create`]) {
+  for (const command of [`git commit -m "fix typo"`, "npm test", "git log --oneline", "gh pr view 3", "gh pr list", `bash -c "npm run pr-check"`, "cat notes-about-gh pr create"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+  // Recognition reads the raw text, so it cannot tell a mention from a hidden command; a mention is the false deny this costs.
+  for (const command of [`git commit -m "document gh pr create"`, `echo 'gh pr create'`, `grep -rn "gh pr create" src`]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
+  }
+});
+
+test("gh pr create hidden in a heredoc body, an eval, a nested shell or a substitution is refused", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  await pass(repo.root);
+  for (const command of [
+    "cat <<EOF\n$(gh pr create --head other --title t --body b)\nEOF",
+    "eval 'gh pr create --head other'",
+    "sh -c 'gh pr create --head other'",
+    "$(printf 'gh pr create --head other')",
+    `eval "$(echo g)h pr create --head other"`,
+    `sh -c "$(printf 'g%s pr create' h)"`,
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
   }
 });
 
@@ -60,10 +80,10 @@ test("a PR opened through a wrapper, a path, a nested shell or a substitution is
   }
 });
 
-test("a heredoc body is not read as commands, and what follows it is", async () => {
+test("a heredoc that does not mention a PR is not read as one, and a PR after a heredoc is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  for (const command of ["cat > notes <<'EOF'\ngh pr create\nEOF", `git commit -m "$(cat <<'EOF'\nthen gh pr create\nEOF\n)"`]) {
+  for (const command of ["cat > notes <<'EOF'\nopen the pr later\nEOF", `git commit -m "$(cat <<'EOF'\nthen create it\nEOF\n)"`]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
   for (const command of ["cat > notes <<EOF\nit's done\nEOF\ngh pr create --title 'x'", "cat <<EOF | gh pr create --body-file -\nbody\nEOF"]) {

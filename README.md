@@ -77,7 +77,7 @@ coherence taste condense                  replace the rules with stdin and archi
 
 ## What it can't do
 
-- The PR hook only sees PRs Claude opens with `gh pr create`. It ties the review to the commit at HEAD, so later commits need a new review, and Claude can mark a trivial change as passed.
+- The PR hook stops an agent from publishing unreviewed work through the ordinary `gh pr create` command. It is not a boundary against an agent that deliberately hides the command, through expansions, `eval`, functions defined earlier or `gh api`; hard enforcement belongs to GitHub branch protection with a required check. It judges only a Bash line that is exactly `gh pr create` with fixed words, refuses any other line that mentions it, even in a commit message, and ties the review to the commit at HEAD, so later commits need a new review, and Claude can mark a trivial change as passed.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
 - The evals measure the reviewer and the taste skill, on tiny samples. They were last run with the reviewer on Sonnet. See `evals/baseline.md`.
 - The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools, but it does have Bash, so be careful reviewing code from strangers.

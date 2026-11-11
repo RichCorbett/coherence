@@ -12,7 +12,12 @@ export function shellCommands(line: string): string[][] {
   return [...commands, ...substitutions.flatMap(shellCommands), ...commands.flatMap(wrapped)];
 }
 
-/** Stands for a word that was a double-quoted `$(cat <<'END' ... END)`: text that runs nothing, and whose content is not read. */
+/**
+ * Stands for a word that was a double-quoted `$(cat <<'END' ... END)`: text that runs nothing, and whose content is not read.
+ * Refusing this substitution too was considered, because the shell runs `cat` after the gate has judged the line, and a `cat`
+ * overridden by a function or PATH could run anything. Rejected because overriding `cat` needs a function or PATH set earlier in
+ * the session, the class the gate already does not cover, while refusing it would refuse Claude Code's standard way to open a PR.
+ */
 export const HEREDOC_TEXT = "\0heredoc text";
 
 /** Unquoted characters the shell leaves as they are. Anything else separates, redirects, expands or globs. */

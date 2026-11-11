@@ -6,12 +6,19 @@ import { HEREDOC_TEXT, shellCommands, staticWords } from "../lib/shell-commands.
 /** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
 const COULD_BE_GH = (word: string) => basename(word) === "gh" || /[$`*?[{\\]/.test(word);
 
+/** Tokens of the raw line, wherever they sit: in quotes, heredoc bodies or substitutions. A hyphen or word character next to one makes it part of another word. */
+const NAMES_PR_CREATE = /(?<![\w-])gh['"\s\\]+pr['"\s\\]+create(?![\w-])/;
+const RUNS_TEXT = /(?<![\w-])(eval|(ba|z|da)?sh\s+-[a-z]*c)(?![\w-])/;
+const NAMES_GH_OR_PR = /(?<![\w-])(gh|pr)(?![\w-])/;
+
 /**
- * Whether a parsed line could open a PR: a command with `pr` and then `create` after a word that is or could become `gh`, or one that
- * starts with `pr`, where a substitution split it from its executable. Broad on purpose, since a line this matches must then be exactly
- * `gh pr create`; a mention in quoted text is one word, so it never matches.
+ * Whether a line could open a PR, so that it must be exactly `gh pr create` or be refused. Broad on purpose, so it also matches a
+ * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or runs text as commands
+ * through `eval` or `sh -c` and names `gh` or `pr`. A parsed command matches when `pr` and then `create` follow a word that is or
+ * could become `gh`, such as `g[h]`, or when it starts with `pr`, where a substitution split it from its executable.
  */
-function opensPr(line: string[][]): boolean {
+function opensPr(raw: string, line: string[][]): boolean {
+  if (NAMES_PR_CREATE.test(raw) || (RUNS_TEXT.test(raw) && NAMES_GH_OR_PR.test(raw))) return true;
   return line.some((words) => {
     const gh = words[0] === "pr" ? 0 : words.findIndex(COULD_BE_GH);
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
@@ -119,7 +126,7 @@ export class PrGateCommand extends BaseCommand {
       this.deny(invocation, UNREADABLE_HOOK);
       return Exit.ok;
     }
-    if (!opensPr(shellCommands(hook.command))) return Exit.ok;
+    if (!opensPr(hook.command, shellCommands(hook.command))) return Exit.ok;
     const pr = prOptions(hook.command);
     if ("why" in pr) return this.cannotCheck(invocation, pr.why);
 
