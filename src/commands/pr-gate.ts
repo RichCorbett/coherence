@@ -15,7 +15,14 @@ function prCreate(line: string[][]): PrCreate | undefined {
   return undefined;
 }
 
-const ON_ITS_OWN = "run gh pr create on its own, as a separate command from the repo's folder";
+const PRINTS = new Set(["cat", "echo", "printf"]);
+
+/** Whether a command only prints text and writes no file, such as the `cat` of a heredoc that fills `--body`. Quotes are gone by now, so any `>` counts as a redirect. */
+function onlyPrints(words: string[]): boolean {
+  return PRINTS.has(words[0]) && !words.some((word) => word.includes(">"));
+}
+
+const ON_ITS_OWN ="run gh pr create on its own, as a separate command from the repo's folder";
 
 /** Whether `word` is a group of short options, such as `-H`, `-Hvalue` or `-dH`, that contains `letter`. */
 function shortOption(word: string, letter: string): boolean {
@@ -26,9 +33,9 @@ function namesHead(word: string): boolean {
   return word === "--head" || word.startsWith("--head=") || shortOption(word, "H");
 }
 
-/** Why the gate cannot judge this line, or undefined when it can. The hook runs before the whole line, so the gh command must be all the line runs, run directly, aimed at this folder's repository. Anything else could move HEAD, change folder or point gh elsewhere first. */
+/** Why the gate cannot judge this line, or undefined when it can. The hook runs before the whole line, so the gh command must be all the line runs besides commands that only print, run directly, aimed at this folder's repository. Anything else could move HEAD, change folder or point gh elsewhere first. */
 function unjudgeable(line: string[][], pr: PrCreate): string | undefined {
-  const other = line.find((words) => words !== pr.words);
+  const other = line.find((words) => words !== pr.words && !onlyPrints(words));
   if (other) return `the same line runs another command; ${ON_ITS_OWN}, and run ${other[0]} separately first`;
   const retarget =
     pr.words.find((word) => /^GH_(REPO|HOST)=/.test(word)) ??

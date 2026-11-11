@@ -239,6 +239,29 @@ test("any other command on the same line as the PR is refused, and named, since 
   }
 });
 
+test("a body filled by a heredoc through cat reaches the review check, and the heredoc text is not read as commands", async () => {
+  const substitution = `gh pr create --title "t" --body "$(cat <<'EOF'\n## Summary\nRan git commit -m x && cd ../other first.\n\nEOF\n)"`;
+  const piped = "cat <<'EOF' | gh pr create --body-file -\nthen git commit and cd ..\nEOF";
+  const unreviewed = await tempRepo({ "a.ts": "x\n" });
+  git(unreviewed.root, "checkout", "-q", "-b", "feature");
+  const repo = await reviewedRepo();
+  for (const command of [substitution, piped]) {
+    assert.match(refusal(await runHook(unreviewed.root, command)), /branch feature has not had a coherence review/, command);
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("a print command that writes a file on the same line as the PR is refused", async () => {
+  const repo = await reviewedRepo();
+  for (const [command, first] of [
+    ["echo x > .git/HEAD; gh pr create", "echo"],
+    ["cat a >> b && gh pr create", "cat"],
+    ["printf x 2>err; gh pr create", "printf"],
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`runs another command; .*run ${first} separately first`), command);
+  }
+});
+
 test("gh run through a wrapper is refused, since the wrapper can change where it runs", async () => {
   const repo = await reviewedRepo();
   for (const [command, wrapper] of [
