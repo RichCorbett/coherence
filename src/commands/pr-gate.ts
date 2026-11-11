@@ -68,13 +68,11 @@ export class PrGateCommand extends BaseCommand {
     const reviewed = await repo.reviewedCommit(branch);
     if (reviewed === tip) return Exit.ok;
 
-    const root = process.env.CLAUDE_PLUGIN_ROOT;
-    const coherence = root ? `${root}/bin/coherence` : "coherence";
     const why = reviewed ? `commits landed on branch ${branch} after its coherence review` : `branch ${branch} has not had a coherence review`;
     this.deny(
       invocation,
       `PR refused by coherence: ${why}. Run /coherence:review <base>, fix what is real, ` +
-        `then open the PR again. For a trivial change such as docs only, tell the owner and run ${coherence} pr-gate pass.`,
+        `then open the PR again. Skipping review is the owner's decision, not yours.`,
     );
     return Exit.ok;
   }
