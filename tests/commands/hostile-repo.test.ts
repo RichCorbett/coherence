@@ -1,30 +1,76 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
+import { Exit } from "../../src/lib/base-command.ts";
+import { PrGateCommand } from "../../src/commands/pr-gate.ts";
 import { setEnv, tempFolder } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
-/** Turns `folder`, already inside a repo, into a repository of its own whose config runs a command when git refreshes it. */
-function plantRepositoryThatRuns(folder: string, command: string, file: string) {
-  git(folder, "init", "-q", "--bare", ".");
+/**
+ * Turns `folder`, already inside a repo, into a bare-looking repository of its own whose config runs `command` from a clean filter.
+ * Returns the commit it holds.
+ */
+function plantBareRepositoryThatRuns(folder: string, command: string, file: string): string {
+  git(folder, "init", "-q", "--bare", "-b", "main", ".");
   for (const [key, value] of [["core.bare", "false"], ["core.worktree", "."]]) {
     git(folder, "--git-dir=.", "config", key, value);
   }
   git(folder, "--git-dir=.", "--work-tree=.", "add", file);
   git(folder, "--git-dir=.", "--work-tree=.", "commit", "-q", "-m", "planted");
-  // Last, or the two commands above would run it while the attack is still being set up.
-  git(folder, "--git-dir=.", "config", "core.fsmonitor", command);
+  // A clean filter, not core.fsmonitor, so that core.fsmonitor=false cannot stop it and only safe.bareRepository does.
+  // Set last, or the two commands above would run it while the attack is still being set up.
+  writeFileSync(join(folder, "info/attributes"), `${file} filter=planted\n`);
+  git(folder, "--git-dir=.", "config", "filter.planted.clean", `${command}; cat`);
+  // A newer mtime makes `git status` read the file through the filter.
+  utimesSync(join(folder, file), new Date(), new Date(Date.now() + 60_000));
+  return git(folder, "--git-dir=.", "rev-parse", "HEAD");
 }
 
-test("a repository planted in the folder the review starts from cannot make git run its command", async () => {
+/** Turns `folder`, already inside a repo, into an ordinary nested repository whose core.fsmonitor runs `command`. Returns the commit it holds. */
+function plantNestedRepositoryThatRuns(folder: string, command: string, file: string): string {
+  // A .git folder, which safe.bareRepository does not refuse, so only core.fsmonitor=false stops it.
+  git(folder, "init", "-q", "-b", "main");
+  git(folder, "add", file);
+  git(folder, "commit", "-q", "-m", "planted");
+  // Last, or the two commands above would run it while the attack is still being set up.
+  git(folder, "config", "core.fsmonitor", command);
+  return git(folder, "--git-dir=.git", "rev-parse", "HEAD");
+}
+
+/** `touch <path>` as shell text that stays one word, so a temp folder with a space in its name cannot turn the plant into a no-op. */
+function touchCommand(path: string): string {
+  return `touch '${path.replaceAll("'", "'\\''")}'`;
+}
+
+/** A repo with `plant` set up in src/lib, and a `pr-gate pass` invocation from there for the commit the plant holds. */
+async function plantedPass(plant: (folder: string, command: string, file: string) => string) {
   const repo = await tempRepo({ "src/lib/client.ts": "export {};\n" });
   const ran = join(tempFolder(), "RAN");
-  plantRepositoryThatRuns(join(repo.root, "src/lib"), `touch ${ran}`, "client.ts");
+  const folder = join(repo.root, "src/lib");
+  const head = plant(folder, touchCommand(ran), "client.ts");
+  const invocation = fakeInvocation(folder, ["pass", "--branch", "main", "--verdict", "merge", "--head", head]);
+  return { ran, folder, head, invocation, execute: () => new PrGateCommand(new CheckCommand()).execute(invocation) };
+}
 
-  await new CheckCommand().execute(fakeInvocation(join(repo.root, "src/lib"), ["--base", "main"])).catch(() => undefined);
+// Through `pr-gate pass`, which runs both the checks and `git status`, so each plant meets a git command that would run it.
+// Each test asserts the exact outcome, so a refusal for some other reason, before git is reached, fails the test instead of passing it.
 
+test("a bare repository planted in the folder the review starts from cannot make git run its command", async () => {
+  const { ran, folder, execute } = await plantedPass(plantBareRepositoryThatRuns);
+
+  // Refused at discovery: git will not use a repository it found by walking into a folder that looks bare.
+  await assert.rejects(execute(), { message: `not a git repository: ${folder}` });
+  assert.equal(existsSync(ran), false);
+});
+
+test("a nested repository planted in the folder the review starts from cannot make git run its command", async () => {
+  const { ran, head, invocation, execute } = await plantedPass(plantNestedRepositoryThatRuns);
+
+  // A recorded review means the checks and `git status` both ran against the planted repository.
+  assert.equal(await execute(), Exit.ok);
+  assert.ok(invocation.printed.includes(`recorded a coherence review for main at ${head.slice(0, 8)}`), invocation.printed.join("\n"));
   assert.equal(existsSync(ran), false);
 });
 
@@ -33,8 +79,9 @@ test("a tool planted above the shared temp folder is never run", async (t) => {
   const planted = join(sharedTemp, "node_modules/.bin");
   mkdirSync(planted, { recursive: true });
   const ran = join(sharedTemp, "RAN");
+  // Named for the exact argument coherence passes: npx puts every ancestor's node_modules/.bin on PATH and runs `madge@8.0.0` from there.
   for (const name of ["madge@8.0.0", "jscpd@5.4.3"]) {
-    writeFileSync(join(planted, name), `#!/bin/sh\ntouch ${ran}\necho '{}'\n`);
+    writeFileSync(join(planted, name), `#!/bin/sh\n${touchCommand(ran)}\necho '{}'\n`);
     chmodSync(join(planted, name), 0o755);
   }
   const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n" });
