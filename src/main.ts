@@ -6,7 +6,8 @@ import { ReviewInputCommand } from "./commands/review-input.ts";
 import { RulesCommand } from "./commands/rules.ts";
 import { TasteCommand } from "./commands/taste.ts";
 
-const COMMANDS: BaseCommand[] = [new CheckCommand(), new PrGateCommand(), new ReviewInputCommand(), new RulesCommand(), new TasteCommand()];
+const check = new CheckCommand();
+const COMMANDS: BaseCommand[] = [check, new PrGateCommand(check), new ReviewInputCommand(), new RulesCommand(), new TasteCommand()];
 
 const [name, ...args] = process.argv.slice(2);
 const command = COMMANDS.find((candidate) => candidate.name === name);

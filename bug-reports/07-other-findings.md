@@ -27,6 +27,16 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 - **LOW:** false denies: `# then gh pr create`, `echo gh pr create`, `gh pr create --help` (M).
 - **LOW:** `gh api -X POST repos/o/r/pulls`, gh aliases and MCP tools bypass any Bash-text gate (I).
 
+## Left open by fix 04 (Dissent round 4, 2026-11-11)
+
+- **HIGH (accepted):** two `pass` calls on one branch can interleave, so a merge that started first can re-record an approval after a later `fix first` revoked it. Needs a branch lock or a review token from `review-input` (M).
+- **HIGH (accepted):** `--base` is chosen by the caller. A base that is a descendant of HEAD, or any too-recent base, shrinks the reviewed change set. The real fix is checking the recorded base at PR time, listed above (M).
+- **MED:** `--branch` uses the narrow `SAFE_REF`, so valid branch names with `+` or `@` can never be approved. This fails closed, but an approval left by older code on such a branch could not be revoked (M).
+- **MED:** `git status --porcelain` follows `status.showUntrackedFiles=no`, which would hide untracked files from the clean-tree check. Pass `--untracked-files=all` (M).
+- **MED:** a `--base` that no longer resolves throws instead of returning a `pass refused` reason. It still exits non-zero and records nothing (M).
+- **LOW:** a successful `pass` revokes twice (M).
+- **Accepted:** a file edited and put back while the checks run (noted in the code and the README).
+
 ## Checks and processes
 
 - **MED:** `runProcess` has no timeout, and a failed check does not cancel the others (M).

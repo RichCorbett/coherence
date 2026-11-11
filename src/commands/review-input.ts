@@ -36,7 +36,7 @@ export class ReviewInputCommand extends BaseCommand {
     const tooLong = patchLines > PASTE_LIMIT_LINES || (patch !== undefined && Buffer.byteLength(patch) > PASTE_LIMIT_BYTES);
     const patchFile = patch !== undefined && tooLong ? await this.keep(patch) : undefined;
 
-    const header = [`BASE ${baseId ?? "none"}`, `HEAD ${headId}`];
+    const header = [`BASE ${baseId ?? "none"}`, `HEAD ${headId}`, `BRANCH ${(await repo.currentBranch()) ?? "none"}`];
     if (patchFile) header.push(`The full diff is ${patchLines} lines, too long to paste (over 3000 lines or 200 KB). Read it in chunks from ${patchFile}`);
     invocation.print(header.join("\n"));
     invocation.print(`=== OWNER TASTE ===\n${(await readTaste()).trimEnd()}`);

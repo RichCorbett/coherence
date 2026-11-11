@@ -17,7 +17,13 @@ function git(args: string[], cwd: string): Promise<ProcessResult> {
 // A ref from a person or a skill is checked before git sees it, so it can never pass for an option or carry shell syntax along.
 const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 
-const COMMIT_SHA = /^[0-9a-f]{40,64}$/;
+/** True for a ref that is plainly a name: it can never pass for an option or carry shell syntax. */
+export function isUsableRef(ref: string): boolean {
+  return !ref.startsWith("-") && SAFE_REF.test(ref);
+}
+
+/** A full commit ID, never an abbreviation that could come to name a different commit. */
+export const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 function firstLine(text: string): string {
   return text.trim().split("\n")[0];
@@ -26,6 +32,13 @@ function firstLine(text: string): string {
 function reviewedKey(branch: string): string {
   return `branch.${branch}.coherence-reviewed`;
 }
+
+function reviewedBaseKey(branch: string): string {
+  return `${reviewedKey(branch)}-base`;
+}
+
+// `git config --unset-all` exits 5 when the key was never set, which leaves the same result.
+const CONFIG_KEY_ABSENT = 5;
 
 /** The git repository under review. Every check sees the code through this one view. */
 export class Repo {
@@ -53,7 +66,7 @@ export class Repo {
 
   /** The commit ID `ref` names. Throws on a ref that is not plainly a name, or that is not a commit. */
   async resolveCommit(ref: string): Promise<string> {
-    if (ref.startsWith("-") || !SAFE_REF.test(ref)) throw new Error(`not a usable ref name: ${ref.slice(0, 80)}`);
+    if (!isUsableRef(ref)) throw new Error(`not a usable ref name: ${ref.slice(0, 80)}`);
     const result = await git(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], this.root);
     if (result.code !== 0) throw new Error(`${ref} is not a commit: ${firstLine(result.stderr)}`);
     return result.stdout.trim();
@@ -98,10 +111,33 @@ export class Repo {
     return COMMIT_SHA.test(stored) ? stored : undefined;
   }
 
-  /** Records that the commit now at HEAD was reviewed. */
-  async markCommitReviewed(branch: string): Promise<void> {
-    const result = await git(["config", reviewedKey(branch), await this.headCommit()], this.root);
-    if (result.code !== 0) throw new Error(`git config failed: ${result.stderr.trim()}`);
+  /** Records that commit `headId` was reviewed, and the base it was reviewed against, as one review. */
+  async markCommitReviewed(branch: string, headId: string, baseId?: string): Promise<void> {
+    // The head is what the gate honours, so the old one goes first and the new one is written last: any failure leaves no approval.
+    await this.revokeReview(branch);
+    if (baseId) await this.setConfig(["config", reviewedBaseKey(branch), baseId]);
+    await this.setConfig(["config", reviewedKey(branch), headId]);
+  }
+
+  /** Forgets the branch's recorded review, head before base. */
+  async revokeReview(branch: string): Promise<void> {
+    for (const key of [reviewedKey(branch), reviewedBaseKey(branch)]) {
+      // --unset-all, because plain --unset fails on a key with several values with the same code as on an absent key.
+      const result = await git(["config", "--unset-all", key], this.root);
+      if (result.code !== 0 && result.code !== CONFIG_KEY_ABSENT) throw new Error(`git config failed: ${firstLine(result.stderr)}`);
+    }
+  }
+
+  /** True when the working tree is not exactly HEAD: a changed tracked file, staged or not, or an untracked file that is not ignored. */
+  async hasUncommittedChanges(): Promise<boolean> {
+    const result = await git(["status", "--porcelain"], this.root);
+    if (result.code !== 0) throw new Error(`git status failed: ${firstLine(result.stderr)}`);
+    return result.stdout.trim() !== "";
+  }
+
+  private async setConfig(args: string[]): Promise<void> {
+    const result = await git(args, this.root);
+    if (result.code !== 0) throw new Error(`git config failed: ${firstLine(result.stderr)}`);
   }
 
   async exists(path: string): Promise<boolean> {

@@ -33,7 +33,7 @@ test("prints the commit IDs, the taste, the rules and the diff, with the diff la
   const { code, out } = await run(repo.root, ["--base", "main"]);
 
   assert.equal(code, Exit.ok);
-  assert.match(out, new RegExp(`^BASE ${base}\\nHEAD ${await repo.headCommit()}\\n`));
+  assert.match(out, new RegExp(`^BASE ${base}\\nHEAD ${await repo.headCommit()}\\nBRANCH feature\\n`));
   const order = ["=== OWNER TASTE ===", "- plain words", "=== DESIGN RULES ===", "- one voice", "=== BEGIN DIFF ===", "+export const b = 2;"].map((part) => out.indexOf(part));
   assert.ok(order.every((at) => at >= 0), `a section is missing:\n${out}`);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
@@ -46,6 +46,9 @@ test("with no base it asks for the whole repository and prints no diff", async (
   assert.match(out, /^BASE none\nHEAD [0-9a-f]{40}/);
   assert.match(out, /=== NO DIFF ===/);
   assert.doesNotMatch(out, /BEGIN DIFF/);
+
+  git(repo.root, "checkout", "-q", "--detach");
+  assert.match((await run(repo.root, [])).out, /^BASE none\nHEAD [0-9a-f]{40}\nBRANCH none\n/);
 });
 
 test("a ref that is not plainly a name is refused before git or a shell sees it", async (t) => {
