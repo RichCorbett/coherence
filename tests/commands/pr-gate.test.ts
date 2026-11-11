@@ -80,7 +80,17 @@ test("refuses to open a PR from a branch with no review, and names the branch an
   assert.equal(decision.permissionDecision, "deny");
   assert.match(decision.permissionDecisionReason, /feature/);
   assert.match(decision.permissionDecisionReason, /\/coherence:review/);
-  assert.match(decision.permissionDecisionReason, / \/plugin\/bin\/coherence pr-gate pass/);
+});
+
+test("the refusal never tells the agent it can pass its own review, and says skipping review is the owner's call", async (t) => {
+  setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const reason = refusal(await runHook(repo.root, "gh pr create --fill"));
+  assert.doesNotMatch(reason, /pr-gate pass/);
+  assert.doesNotMatch(reason, /trivial/);
+  assert.match(reason, /\/coherence:review/);
+  assert.match(reason, /owner's decision/);
 });
 
 test("once the review is recorded the PR opens, for that branch only", async () => {
