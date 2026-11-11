@@ -27,6 +27,12 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 - **LOW:** `gh api -X POST repos/o/r/pulls`, gh aliases and MCP tools bypass any Bash-text gate (I).
 - **Fixed (07a):** the recorded base was never checked, so a review against `HEAD~1` or `main` also let a PR to any base open, and a too-recent `--base` from the caller shrank the reviewed change set (both left open by fix 04). The hook now requires a PR on a branch reviewed against a base to name `--base`, resolves it only as the local branch `refs/heads/<base>`, as gh reads it, and refuses when it is missing, is not a plain branch name, has no local branch, or is not at the reviewed base. A whole-repo review records the base `all` and still allows any; an approval with no readable base, including a head-only one left by earlier versions, is refused. The base is compared in the local clone, not on GitHub; that gap is accepted and documented in the README.
 
+## Left open by fix 07b (Dissent round 4, 2026-11-11)
+
+- **Fixed (07b):** an expanded `pr` or `create` (`gh pr $'create'`, `gh $(echo pr) create`, `"$GH" "$P" create`, options in between, extended globs such as `gh @(pr) create`) hid a PR from the gate. Any `gh` word followed by a word the shell could still change is now a candidate unless what follows is plainly another command (`gh api`, `gh repo`, `gh pr view`).
+- **HIGH (accepted):** an expandable executable behind a wrapper, such as `env "$GH" "$P" create`, and a whole command in one variable (`$CMD`). The documented limit of a Bash-text gate (M).
+- **LOW (accepted):** false denies on `$EDITOR $FILE` and on a mention such as `printf '%s' gh "$HOME"`. Both fail closed (M).
+
 ## Left open by fix 04 (Dissent round 4, 2026-11-11)
 
 - **HIGH (accepted):** two `pass` calls on one branch can interleave, so a merge that started first can re-record an approval after a later `fix first` revoked it. Needs a branch lock or a review token from `review-input` (M).
