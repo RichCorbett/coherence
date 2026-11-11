@@ -68,9 +68,10 @@ Whenever I reject or correct a design choice, use the `coherence:taste` skill to
 ```
 coherence check [--base <ref>]            run the rule checks
 coherence pr-gate                         the hook on gh pr create
-coherence pr-gate pass --verdict <call> --head <id> [--base <id>]
+coherence pr-gate pass --verdict <call> --branch <name> --head <id> [--base <id>]
                                           revoke the branch's review, then record a merge review of
-                                          HEAD; refuses any other call, a HEAD that moved, uncommitted
+                                          HEAD; refuses any other call, another branch checked out,
+                                          a HEAD that moved, a base equal to HEAD, uncommitted
                                           changes, untracked files or check findings
 coherence review-input [--base <ref>]     print what the reviewer's prompt needs: taste, rules and the diff
 coherence rules                           print the design rules

@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
-import { COMMIT_SHA, Repo } from "../lib/repo.ts";
+import { COMMIT_SHA, isUsableRef, Repo } from "../lib/repo.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
 
 /** The words after `gh pr create`, or undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
@@ -30,12 +30,12 @@ function headBranch(args: string[]): string | undefined {
   return named !== -1 ? args[named + 1] : args.find((word) => word.startsWith("--head="))?.slice("--head=".length);
 }
 
-type PassOptions = { verdict?: string; head?: string; base?: string };
+type PassOptions = { branch?: string; verdict?: string; head?: string; base?: string };
 
 /** The options `pr-gate pass` was given, or why they cannot be read. */
 function passOptions(args: string[]): PassOptions | string {
   try {
-    const options = { verdict: { type: "string" }, head: { type: "string" }, base: { type: "string" } } as const;
+    const options = { branch: { type: "string" }, verdict: { type: "string" }, head: { type: "string" }, base: { type: "string" } } as const;
     return parseArgs({ args, options, strict: true }).values;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -50,7 +50,7 @@ const UNREADABLE_HOOK =
 export class PrGateCommand extends BaseCommand {
   readonly name = "pr-gate";
   readonly usage =
-    "coherence pr-gate [pass --verdict merge --head <commit id> [--base <commit id>]]  (PreToolUse hook on stdin; pass records that the review approved HEAD)";
+    "coherence pr-gate [pass --branch <name> --verdict <call> --head <commit id> [--base <commit id>]]  (PreToolUse hook on stdin; pass records that the review approved HEAD)";
 
   /** The `check` command, which `pass` runs again before recording. Commands may not import each other, so main.ts hands it over. */
   private readonly check: BaseCommand;
@@ -101,25 +101,29 @@ export class PrGateCommand extends BaseCommand {
 
   /**
    * Records a review only when it approved exactly the commit at HEAD, and the rules still find nothing there.
-   * Every call first revokes the branch's earlier approval, so a later review that does not approve leaves none behind.
+   * Every call first revokes the reviewed branch's earlier approval, whatever is checked out now, so a later review
+   * that does not approve leaves none behind.
    */
   private async pass(invocation: Invocation): Promise<number> {
-    const repo = await Repo.open(invocation.cwd);
-    const branch = await repo.currentBranch();
-    if (branch) await repo.revokeReview(branch);
-
     const options = passOptions(invocation.args.slice(1));
     if (typeof options === "string") return this.refusePass(invocation, options, Exit.usage);
-    const { verdict, head, base } = options;
+    const { branch, verdict, head, base } = options;
+    if (branch === undefined) return this.refusePass(invocation, "it needs --branch, the branch that was reviewed", Exit.usage);
+    if (!isUsableRef(branch)) return this.refusePass(invocation, `--branch is not a usable branch name: ${branch.slice(0, 80)}`, Exit.usage);
+    const repo = await Repo.open(invocation.cwd);
+    await repo.revokeReview(branch);
+
     if (verdict === undefined || head === undefined) return this.refusePass(invocation, "it needs --verdict and --head", Exit.usage);
-    if (verdict !== "merge") return this.refusePass(invocation, `the verdict was "${verdict}", so ${branch ?? "the branch"} is left with no recorded review`);
+    if (verdict !== "merge") return this.refusePass(invocation, `the verdict was "${verdict}", so ${branch} is left with no recorded review`);
     if (!COMMIT_SHA.test(head)) return this.refusePass(invocation, `--head must be a full commit ID, not ${head.slice(0, 80)}`, Exit.usage);
-    if (!branch) return this.refusePass(invocation, "HEAD is detached, so there is no branch to record the review on");
+    const checkedOut = await repo.currentBranch();
+    if (checkedOut !== branch) return this.refusePass(invocation, `${checkedOut ? `branch ${checkedOut}` : "a detached HEAD"} is checked out, not the reviewed ${branch}`);
     const current = await repo.headCommit();
     if (head !== current) return this.refusePass(invocation, `HEAD is now ${current}, not the reviewed ${head}. Review again`);
     // The checks read the working tree, so it must hold exactly the reviewed commit.
     if (await repo.hasUncommittedChanges()) return this.refusePass(invocation, "the working tree has uncommitted changes or untracked files, so it is not the reviewed commit");
     const baseId = base === undefined ? undefined : await repo.resolveCommit(base);
+    if (baseId === head) return this.refusePass(invocation, "--base is the reviewed commit itself, so the review saw an empty diff", Exit.usage);
     // Over the same scope the review used, so the recorded base and the checked base are one commit.
     const checked = await this.check
       .execute({ ...invocation, args: baseId ? ["--base", baseId] : [] })

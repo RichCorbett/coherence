@@ -17,6 +17,11 @@ function git(args: string[], cwd: string): Promise<ProcessResult> {
 // A ref from a person or a skill is checked before git sees it, so it can never pass for an option or carry shell syntax along.
 const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 
+/** True for a ref that is plainly a name: it can never pass for an option or carry shell syntax. */
+export function isUsableRef(ref: string): boolean {
+  return !ref.startsWith("-") && SAFE_REF.test(ref);
+}
+
 /** A full commit ID, never an abbreviation that could come to name a different commit. */
 export const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
@@ -61,7 +66,7 @@ export class Repo {
 
   /** The commit ID `ref` names. Throws on a ref that is not plainly a name, or that is not a commit. */
   async resolveCommit(ref: string): Promise<string> {
-    if (ref.startsWith("-") || !SAFE_REF.test(ref)) throw new Error(`not a usable ref name: ${ref.slice(0, 80)}`);
+    if (!isUsableRef(ref)) throw new Error(`not a usable ref name: ${ref.slice(0, 80)}`);
     const result = await git(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], this.root);
     if (result.code !== 0) throw new Error(`${ref} is not a commit: ${firstLine(result.stderr)}`);
     return result.stdout.trim();

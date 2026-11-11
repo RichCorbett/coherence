@@ -27,14 +27,19 @@ async function passWith(cwd: string, args: string[]) {
   return { code, error: invocation.errors.join("\n") };
 }
 
-/** Records a merge verdict for the commit now at HEAD, as the review skill does. */
-async function pass(cwd: string, ...extra: string[]) {
-  return (await passWith(cwd, ["--verdict", "merge", "--head", git(cwd, "rev-parse", "HEAD"), ...extra])).code;
+/** The arguments the review skill passes for a merge of the branch and commit checked out now. */
+function mergeOfHead(cwd: string): string[] {
+  return ["--branch", git(cwd, "branch", "--show-current"), "--verdict", "merge", "--head", git(cwd, "rev-parse", "HEAD")];
 }
 
-function recorded(cwd: string, key: string): string | undefined {
+/** Records a merge verdict for the commit now at HEAD, as the review skill does. */
+async function pass(cwd: string, ...extra: string[]) {
+  return (await passWith(cwd, [...mergeOfHead(cwd), ...extra])).code;
+}
+
+function recorded(cwd: string, key: string, branch = "feature"): string | undefined {
   try {
-    return git(cwd, "config", "--get", `branch.feature.${key}`);
+    return git(cwd, "config", "--get", `branch.${branch}.${key}`);
   } catch {
     return undefined;
   }
@@ -217,19 +222,67 @@ test("an unknown verb prints the usage and exits 2, and pass needs a branch", as
 
   git(repo.root, "checkout", "-q", "--detach");
   const head = git(repo.root, "rev-parse", "HEAD");
-  const detached = await passWith(repo.root, ["--verdict", "merge", "--head", head]);
+  const detached = await passWith(repo.root, ["--branch", "main", "--verdict", "merge", "--head", head]);
   assert.equal(detached.code, Exit.findings);
-  assert.match(detached.error, /^coherence pr-gate pass refused: HEAD is detached/);
+  assert.match(detached.error, /^coherence pr-gate pass refused: a detached HEAD is checked out, not the reviewed main/);
 });
 
-test("pass refuses without a verdict or a head, and records nothing", async () => {
+test("pass refuses without a branch, a verdict or a head, or with a branch name that is not plainly a name", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
   const head = git(repo.root, "rev-parse", "HEAD");
-  for (const args of [[], ["--head", head], ["--verdict", "merge"]]) {
+  const cases: [string[], RegExp][] = [
+    [["--verdict", "merge", "--head", head], /refused: it needs --branch/],
+    [["--branch=-c", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: -c/],
+    [["--branch", "a;b", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: a;b/],
+    [["--branch", "feature"], /refused: it needs --verdict and --head/],
+    [["--branch", "feature", "--head", head], /refused: it needs --verdict and --head/],
+    [["--branch", "feature", "--verdict", "merge"], /refused: it needs --verdict and --head/],
+  ];
+  for (const [args, reason] of cases) {
     const refused = await passWith(repo.root, args);
     assert.equal(refused.code, Exit.usage, args.join(" "));
-    assert.match(refused.error, /refused: it needs --verdict and --head/, args.join(" "));
+    assert.match(refused.error, reason, args.join(" "));
+  }
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
+test("a fix first verdict revokes the reviewed branch, even after a switch to another branch or a detached HEAD", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "other");
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const head = git(repo.root, "rev-parse", "HEAD");
+  for (const leave of [["checkout", "-q", "other"], ["checkout", "-q", "--detach"]]) {
+    git(repo.root, "checkout", "-q", "feature");
+    approve(repo.root);
+    git(repo.root, "config", "branch.other.coherence-reviewed", head);
+    git(repo.root, ...leave);
+    const refused = await passWith(repo.root, ["--branch", "feature", "--verdict", "fix first", "--head", head]);
+    assert.equal(refused.code, Exit.findings, leave.join(" "));
+    assert.equal(recorded(repo.root, "coherence-reviewed"), undefined, leave.join(" "));
+    assert.equal(recorded(repo.root, "coherence-reviewed", "other"), head, leave.join(" "));
+  }
+});
+
+test("a merge verdict is recorded only while the reviewed branch is checked out", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const head = git(repo.root, "rev-parse", "HEAD");
+  git(repo.root, "checkout", "-q", "-b", "other");
+  const refused = await passWith(repo.root, ["--branch", "feature", "--verdict", "merge", "--head", head]);
+  assert.equal(refused.code, Exit.findings);
+  assert.match(refused.error, /branch other is checked out, not the reviewed feature/);
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+  assert.equal(recorded(repo.root, "coherence-reviewed", "other"), undefined);
+});
+
+test("pass refuses a base that is the reviewed commit itself", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const base of ["HEAD", "main", git(repo.root, "rev-parse", "HEAD")]) {
+    const refused = await passWith(repo.root, [...mergeOfHead(repo.root), "--base", base]);
+    assert.equal(refused.code, Exit.usage, base);
+    assert.match(refused.error, /--base is the reviewed commit itself/, base);
   }
   assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
 });
@@ -237,10 +290,11 @@ test("pass refuses without a verdict or a head, and records nothing", async () =
 test("a fix first or rework verdict revokes an earlier approval of the same commit, and the PR is refused again", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "work");
   const head = git(repo.root, "rev-parse", "HEAD");
   for (const verdict of ["fix first", "rework", "Merge"]) {
     assert.equal(await pass(repo.root, "--base", "main"), Exit.ok, verdict);
-    const refused = await passWith(repo.root, ["--verdict", verdict, "--head", head]);
+    const refused = await passWith(repo.root, ["--branch", "feature", "--verdict", verdict, "--head", head]);
     assert.equal(refused.code, Exit.findings, verdict);
     assert.match(refused.error, new RegExp(`the verdict was "${verdict}", so feature is left with no recorded review`), verdict);
     assert.equal(recorded(repo.root, "coherence-reviewed"), undefined, verdict);
@@ -259,7 +313,7 @@ test("pass refuses a head that is not the current HEAD", async () => {
   git(repo.root, "checkout", "-q", "-b", "feature");
   const reviewed = git(repo.root, "rev-parse", "HEAD");
   git(repo.root, "commit", "-q", "--allow-empty", "-m", "after the review");
-  const refused = await passWith(repo.root, ["--verdict", "merge", "--head", reviewed]);
+  const refused = await passWith(repo.root, ["--branch", "feature", "--verdict", "merge", "--head", reviewed]);
   assert.equal(refused.code, Exit.findings);
   assert.match(refused.error, new RegExp(`HEAD is now ${git(repo.root, "rev-parse", "HEAD")}, not the reviewed ${reviewed}`));
   assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
@@ -270,7 +324,7 @@ test("pass refuses a commit ID that is not 40 or 64 characters, even a short one
   git(repo.root, "checkout", "-q", "-b", "feature");
   const head = git(repo.root, "rev-parse", "HEAD");
   for (const id of [git(repo.root, "rev-parse", "--short", "HEAD"), `${head}a`, `${head}${"a".repeat(23)}`]) {
-    const refused = await passWith(repo.root, ["--verdict", "merge", "--head", id]);
+    const refused = await passWith(repo.root, ["--branch", "feature", "--verdict", "merge", "--head", id]);
     assert.equal(refused.code, Exit.usage, id);
     assert.match(refused.error, /--head must be a full commit ID/, id);
   }
@@ -289,7 +343,7 @@ test("pass refuses while the tree has uncommitted changes or untracked files, an
     if (label === "untracked") git(repo.root, "reset", "-q", "--hard");
     makeDirty();
     approve(repo.root);
-    const refused = await passWith(repo.root, ["--verdict", "merge", "--head", git(repo.root, "rev-parse", "HEAD")]);
+    const refused = await passWith(repo.root, ["--branch", "feature", "--verdict", "merge", "--head", git(repo.root, "rev-parse", "HEAD")]);
     assert.equal(refused.code, Exit.findings, label);
     assert.match(refused.error, /the working tree has uncommitted changes or untracked files/, label);
     assert.equal(recorded(repo.root, "coherence-reviewed"), undefined, label);
@@ -311,7 +365,7 @@ test("pass re-runs the checks and refuses when they find something, over the bas
   const main = git(repo.root, "rev-parse", "main");
   for (const extra of [["--base", main], []]) {
     approve(repo.root);
-    const refused = await passWith(repo.root, ["--verdict", "merge", "--head", git(repo.root, "rev-parse", "HEAD"), ...extra]);
+    const refused = await passWith(repo.root, ["--branch", "feature", "--verdict", "merge", "--head", git(repo.root, "rev-parse", "HEAD"), ...extra]);
     assert.equal(refused.code, Exit.findings, extra.join(" "));
     assert.match(refused.error, /refused: coherence check reports findings, listed above/, extra.join(" "));
     assert.equal(recorded(repo.root, "coherence-reviewed"), undefined, extra.join(" "));
@@ -394,7 +448,7 @@ class FakeCheck extends BaseCommand {
 }
 
 async function passThrough(cwd: string, check: FakeCheck) {
-  const invocation = fakeInvocation(cwd, ["pass", "--verdict", "merge", "--head", git(cwd, "rev-parse", "HEAD")]);
+  const invocation = fakeInvocation(cwd, ["pass", ...mergeOfHead(cwd)]);
   const code = await new PrGateCommand(check).execute(invocation);
   return { code, error: invocation.errors.join("\n") };
 }
