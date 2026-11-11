@@ -8,7 +8,7 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 - **MED:** the fixture `ARCHITECTURE.md` files state, word for word, the answers that `stated-the-idea` and `kept-the-good-shape` look for (M).
 - **MED:** no planted case has a precision grader, so "21 of 21" measures recall only. A report with 30 findings still passes (M).
 - **MED:** `evals/baseline.md:24-26` shows the results table mixes two reviewer configurations, and the judge and the reviewer are both Sonnet (M).
-- **MED:** `evals/taste-applied/scaffold.sh:10` overwrites the real `~/.config/coherence/taste-log.md`, and `taste-capture` appends to it. Set `XDG_CONFIG_HOME` per case (M; whether the eval runner isolates HOME is inferred).
+- **Fixed (08c):** `evals/taste-applied/scaffold.sh` wrote the taste log with `>`. The eval docs say each scaffold runs with a fresh temporary `HOME` (relayed), so it should never meet a real log; the script now refuses to overwrite one that already exists, so a run outside that home fails loudly instead.
 - **INFO:** nothing measures the headline claim, "reads like one person wrote it". The review skill, `check` and the gate have no eval coverage (M).
 
 ## Taste
