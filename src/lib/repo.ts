@@ -1,4 +1,3 @@
-import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { MAX_OUTPUT_MB, type ProcessResult, runProcess } from "./process.ts";
 
@@ -10,7 +9,7 @@ const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
 // A folder in the repo under review can pose as a repository of its own, and its config can name a command for git to run.
 const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"];
 
-function git(args: string[], cwd: string): Promise<ProcessResult> {
+export function git(args: string[], cwd: string): Promise<ProcessResult> {
   return runProcess("git", [...REFUSE_PLANTED_REPOSITORIES, ...args], cwd);
 }
 
@@ -22,26 +21,12 @@ export function isUsableRef(ref: string): boolean {
   return !ref.startsWith("-") && SAFE_REF.test(ref);
 }
 
-/** The recorded base of a review that read the whole repo, not a diff from a base. It cannot be a commit ID. */
-export const WHOLE_REPO = "all";
-
 /** A full commit ID, never an abbreviation that could come to name a different commit. */
 export const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
-function firstLine(text: string): string {
+export function firstLine(text: string): string {
   return text.trim().split("\n")[0];
 }
-
-function reviewedKey(branch: string): string {
-  return `branch.${branch}.coherence-reviewed`;
-}
-
-function reviewedBaseKey(branch: string): string {
-  return `${reviewedKey(branch)}-base`;
-}
-
-// `git config --unset-all` exits 5 when the key was never set, which leaves the same result.
-const CONFIG_KEY_ABSENT = 5;
 
 /** The git repository under review. Every check sees the code through this one view. */
 export class Repo {
@@ -107,53 +92,11 @@ export class Repo {
     return result.code === 0 ? result.stdout.trim() : undefined;
   }
 
-  // Kept in the repo's own git config, so it stays per clone and per branch and needs no file of ours.
-  // Earlier versions stored "true" for the whole branch; that is not a commit, so it counts as never reviewed.
-  async reviewedCommit(branch: string): Promise<string | undefined> {
-    const stored = (await git(["config", "--get", reviewedKey(branch)], this.root)).stdout.trim();
-    return COMMIT_SHA.test(stored) ? stored : undefined;
-  }
-
-  /**
-   * What the branch's recorded review was made against: a commit ID, WHOLE_REPO, or undefined when the base is missing or not
-   * one of those. Missing includes approvals left by earlier versions, which wrote only the head and so cannot say what they covered.
-   */
-  async reviewedBase(branch: string): Promise<string | typeof WHOLE_REPO | undefined> {
-    const stored = (await git(["config", "--get", reviewedBaseKey(branch)], this.root)).stdout.trim();
-    return stored === WHOLE_REPO || COMMIT_SHA.test(stored) ? stored : undefined;
-  }
-
-  /** Records that commit `headId` was reviewed, and the base it was reviewed against, or the whole repo when there is none, as one review. */
-  async markCommitReviewed(branch: string, headId: string, baseId?: string): Promise<void> {
-    // The head is what the gate honours, so the old one goes first and the new one is written last: any failure leaves no approval.
-    await this.revokeReview(branch);
-    await this.setConfig(["config", reviewedBaseKey(branch), baseId ?? WHOLE_REPO]);
-    await this.setConfig(["config", reviewedKey(branch), headId]);
-  }
-
-  /** Forgets the branch's recorded review, head before base. */
-  async revokeReview(branch: string): Promise<void> {
-    for (const key of [reviewedKey(branch), reviewedBaseKey(branch)]) {
-      // --unset-all, because plain --unset fails on a key with several values with the same code as on an absent key.
-      const result = await git(["config", "--unset-all", key], this.root);
-      if (result.code !== 0 && result.code !== CONFIG_KEY_ABSENT) throw new Error(`git config failed: ${firstLine(result.stderr)}`);
-    }
-  }
-
   /** True when the working tree is not exactly HEAD: a changed tracked file, staged or not, or an untracked file that is not ignored. */
   async hasUncommittedChanges(): Promise<boolean> {
     const result = await git(["status", "--porcelain"], this.root);
     if (result.code !== 0) throw new Error(`git status failed: ${firstLine(result.stderr)}`);
     return result.stdout.trim() !== "";
-  }
-
-  private async setConfig(args: string[]): Promise<void> {
-    const result = await git(args, this.root);
-    if (result.code !== 0) throw new Error(`git config failed: ${firstLine(result.stderr)}`);
-  }
-
-  async exists(path: string): Promise<boolean> {
-    return access(this.absolutePath(path)).then(() => true, () => false);
   }
 
   private async diffBetween(baseId: string, headId: string, extra: string[]): Promise<string> {

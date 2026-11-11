@@ -6,6 +6,7 @@ import { test, type TestContext } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
 import { PrGateCommand } from "../../src/commands/pr-gate.ts";
 import { BaseCommand, Exit } from "../../src/lib/base-command.ts";
+import { markCommitReviewed, reviewedCommit } from "../../src/lib/review-record.ts";
 import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
@@ -794,12 +795,12 @@ for (const change of ["unset", "write"] as const) {
     const repo = await tempRepo({ "a.ts": "x\n" });
     const main = git(repo.root, "rev-parse", "main");
     git(repo.root, "checkout", "-q", "-b", "feature");
-    await repo.markCommitReviewed("feature", main, main);
+    await markCommitReviewed(repo, "feature", main, main);
     git(repo.root, "commit", "-q", "--allow-empty", "-m", "work");
 
     failBaseChanges(t, change);
-    await assert.rejects(repo.markCommitReviewed("feature", git(repo.root, "rev-parse", "HEAD"), main), /git config failed: planted failure/);
-    assert.equal(await repo.reviewedCommit("feature"), undefined);
+    await assert.rejects(markCommitReviewed(repo, "feature", git(repo.root, "rev-parse", "HEAD"), main), /git config failed: planted failure/);
+    assert.equal(await reviewedCommit(repo, "feature"), undefined);
   });
 }
 
