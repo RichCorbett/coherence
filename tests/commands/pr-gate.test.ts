@@ -139,22 +139,24 @@ test("a PR opened on a detached HEAD is refused and asks for a branch", async ()
   assert.match(refusal(await runHook(repo.root, "gh pr create --fill")), /HEAD is detached.*--head/);
 });
 
-test("hook input that is not JSON, or names no command, is refused when it could be opening a PR", async () => {
+test("hook input that is not JSON, or names no command, is always refused as unreadable", async () => {
   const folder = tempFolder();
-  assert.match(refusal(await runRawHook(folder, "{not json gh pr create")), /hook input was not JSON/);
-  assert.match(refusal(await runRawHook(folder, JSON.stringify({ cwd: folder, tool_input: { cmd: "gh pr create" } }))), /hook input was not JSON/);
-  // Escaped in the payload, the words only line up once the JSON is decoded.
-  for (const stdin of [String.raw`{"tool_input":{"cmd":"gh\u0020pr\u0020create"}}`, JSON.stringify({ other: ["gh\npr\ncreate --fill"] })]) {
-    assert.match(refusal(await runRawHook(folder, stdin)), /hook input was not JSON/, stdin);
-  }
-});
-
-test("hook input that is not JSON, or names no command, is let through when it cannot be opening a PR", async () => {
-  const folder = tempFolder();
-  assert.deepEqual(await runRawHook(folder, "{not json ls -la"), []);
-  assert.deepEqual(await runRawHook(folder, JSON.stringify({ cwd: folder, tool_input: {} })), []);
-  for (const stdin of ["{not json high priority", "{not json printf high", "{not json gh pr status", JSON.stringify({ tool_input: { cmd: "gh pr status" } })]) {
-    assert.deepEqual(await runRawHook(folder, stdin), [], stdin);
+  for (const stdin of [
+    "{not json gh pr create",
+    "{not json ls -la",
+    "",
+    "null",
+    "42",
+    JSON.stringify({ cwd: folder, tool_input: {} }),
+    JSON.stringify({ cwd: folder, tool_input: { cmd: "gh pr create" } }),
+    JSON.stringify({ cwd: folder, tool_input: { command: ["gh", "pr", "create"] } }),
+  ]) {
+    assert.equal(
+      refusal(await runRawHook(folder, stdin)),
+      "coherence pr-gate could not read the hook input, so it cannot tell whether this command opens a PR. " +
+        "Claude Code's hook format may have changed: update or disable the coherence plugin.",
+      stdin,
+    );
   }
 });
 

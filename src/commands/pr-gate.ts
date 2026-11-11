@@ -13,23 +13,14 @@ function prCreateArgs(commandLine: string): string[] | undefined {
   return undefined;
 }
 
-// The words that open a PR, in order, for hook input too broken to read the command from.
-const MAY_OPEN_PR = /\bgh\b[\s\S]*?\bpr\b[\s\S]*?\bcreate\b/;
-
-/** Every string in a parsed JSON value, so text the payload escaped is read as it decodes. */
-function jsonStrings(value: unknown): string[] {
-  if (typeof value === "string") return [value];
-  return value && typeof value === "object" ? Object.values(value).flatMap(jsonStrings) : [];
-}
-
-/** The command and folder a PreToolUse hook names, or the text to search when the input is not a hook payload. */
-function hookInput(stdin: string): { command: string; cwd?: string } | { unreadable: string } {
+/** The command and folder a PreToolUse hook names, or undefined when the input is not a hook payload. */
+function hookInput(stdin: string): { command: string; cwd?: string } | undefined {
   try {
     const hook = JSON.parse(stdin);
-    if (typeof hook?.tool_input?.command !== "string") return { unreadable: jsonStrings(hook).join("\n") };
+    if (typeof hook?.tool_input?.command !== "string") return undefined;
     return { command: hook.tool_input.command, cwd: typeof hook.cwd === "string" && hook.cwd !== "" ? hook.cwd : undefined };
   } catch {
-    return { unreadable: stdin };
+    return undefined;
   }
 }
 
@@ -37,6 +28,10 @@ function headBranch(args: string[]): string | undefined {
   const named = args.findIndex((word) => word === "--head" || word === "-H");
   return named !== -1 ? args[named + 1] : args.find((word) => word.startsWith("--head="))?.slice("--head=".length);
 }
+
+const UNREADABLE_HOOK =
+  "coherence pr-gate could not read the hook input, so it cannot tell whether this command opens a PR. " +
+  "Claude Code's hook format may have changed: update or disable the coherence plugin.";
 
 /** Refuses to open a pull request unless the commit it would publish has had a coherence review, and records when one has. */
 export class PrGateCommand extends BaseCommand {
@@ -49,9 +44,10 @@ export class PrGateCommand extends BaseCommand {
     if (verb !== undefined) return this.refuse(invocation);
 
     const hook = hookInput(await invocation.readStdin());
-    // The hook runs on every shell command, so unreadable input is refused only when it could be opening a PR.
-    if ("unreadable" in hook) {
-      return MAY_OPEN_PR.test(hook.unreadable) ? this.cannotCheck(invocation, "the hook input was not JSON naming a tool_input.command") : Exit.ok;
+    // Claude Code always sends this, so input without it means the hook protocol changed; guessing at it would let PRs through.
+    if (!hook) {
+      this.deny(invocation, UNREADABLE_HOOK);
+      return Exit.ok;
     }
     const args = prCreateArgs(hook.command);
     if (!args) return Exit.ok;
