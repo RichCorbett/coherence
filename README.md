@@ -68,6 +68,7 @@ Whenever I reject or correct a design choice, use the `coherence:taste` skill to
 ```
 coherence check [--base <ref>]            run the rule checks
 coherence pr-gate [pass]                  the hook on gh pr create; pass records a review
+coherence review-input [--base <ref>]     print what the reviewer's prompt needs: taste, rules and the diff
 coherence rules                           print the design rules
 coherence taste                           print your taste
 coherence taste add "..."                 record a preference
@@ -80,7 +81,7 @@ coherence taste condense                  replace the rules with stdin and archi
 - The PR hook only sees PRs Claude opens with `gh pr create`. It ties the review to the commit at HEAD, so later commits need a new review, and Claude can mark a trivial change as passed.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
 - The evals measure the reviewer and the taste skill, on tiny samples. They were last run with the reviewer on Sonnet. See `evals/baseline.md`.
-- The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools and no Bash: the review skill runs the diff, `coherence taste` and `coherence rules` in your session and hands it the text. It can still Read files anywhere on disk if a repo misleads it, because Claude Code agent files cannot restrict paths. Review code from strangers in an isolated checkout or a sandbox.
+- The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools and no Bash: the review skill runs `coherence review-input` in your session, which prints the taste, the rules and the diff, and hands it the text. It can still Read files anywhere on disk if a repo misleads it, because Claude Code agent files cannot restrict paths. Review code from strangers in an isolated checkout or a sandbox.
 
 ## How well it works
 

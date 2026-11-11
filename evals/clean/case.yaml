@@ -9,7 +9,7 @@ execution:
   allowed_tools: [Agent, Read, Glob, Grep, Bash]
   prompt: |
     Use the coherence:readability-reviewer subagent to review this whole repository.
-    The subagent has no shell. Run `coherence taste` and `coherence rules` yourself, and put their output in its prompt under the labels OWNER TASTE and DESIGN RULES. There is no diff.
+    The subagent has no shell. Run `coherence review-input` yourself, with no --base, and paste its whole output into the subagent prompt unchanged.
     Then repeat its report word for word as your final message.
 context:
   scaffold_script: scaffold.sh

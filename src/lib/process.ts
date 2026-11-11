@@ -29,12 +29,17 @@ export async function runPinnedTool(args: string[]): Promise<ProcessResult> {
   return withTempFolder((folder) => runProcess("npx", ["--yes", ...args], folder));
 }
 
-/** Gives `work` an empty folder and removes it afterwards, however `work` ends. */
-export async function withTempFolder<T>(work: (folder: string) => Promise<T>): Promise<T> {
+/** A new private folder in coherence's own cache area, for the caller to remove. */
+export async function makeCacheFolder(prefix: string): Promise<string> {
   // Not under the system temp folder: npx also searches every parent of its working folder, and other users can write to /tmp.
   const parent = join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "coherence");
   await mkdir(parent, { recursive: true, mode: 0o700 });
-  const folder = await mkdtemp(join(parent, "run-"));
+  return mkdtemp(join(parent, prefix));
+}
+
+/** Gives `work` an empty folder and removes it afterwards, however `work` ends. */
+export async function withTempFolder<T>(work: (folder: string) => Promise<T>): Promise<T> {
+  const folder = await makeCacheFolder("run-");
   try {
     return await work(folder);
   } finally {
