@@ -18,3 +18,5 @@ All claims come from reading the code. None were reproduced by running it. "Meas
 | [06-hook-filter-too-literal.md](06-hook-filter-too-literal.md) | HIGH | The hook's `*gh pr create*` filter misses equivalent commands |
 | [07-other-findings.md](07-other-findings.md) | MED and LOW | Everything else, ranked |
 | [08-feature-trusted-repos-for-config-executing-tools.md](08-feature-trusted-repos-for-config-executing-tools.md) | Feature | Run knip and other config-executing tools only on owner-trusted repos |
+| [09-dogfood-review-findings.md](09-dogfood-review-findings.md) | MED and LOW | coherence's own reviewer on `main` at `1c355f7`: fix first, mainly `pr-gate.ts` |
+| [10-eval-sandbox-environment.md](10-eval-sandbox-environment.md) | MED | The eval's first step fails where Node, git or the plugin's `bin/` is out of the sandbox's reach |
