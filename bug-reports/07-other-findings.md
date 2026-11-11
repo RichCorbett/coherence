@@ -37,6 +37,14 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 - **LOW:** a successful `pass` revokes twice (M).
 - **Accepted:** a file edited and put back while the checks run (noted in the code and the README).
 
+## Left open by fix 02 (Dissent round 4, 2026-11-11)
+
+- **HIGH (accepted):** the allowed body form `"$(cat <<'EOF' ... EOF)"` runs `cat` after the gate decides. A `cat` function or PATH entry set earlier in the session could change HEAD first. Same class as aliases and functions defined earlier. Removing the form would refuse Claude Code's standard PR command (M/I).
+- **Accepted, documented in the README:** a Bash-text gate cannot see every disguise: `gh $A create`, `$CMD`, base64, `gh api`. Hard enforcement belongs to GitHub branch protection with a required check.
+- **MED:** the hook's stdin read has no timeout (with the other timeouts above) (M).
+- **MED:** the gh option table is from gh 2.103.2. A new gh option is refused until it is added; this fails closed (M).
+- **LOW:** any mention of `gh pr create`, such as `grep -rn "gh pr create"` or a commit message naming it, is refused (M).
+
 ## Checks and processes
 
 - **MED:** `runProcess` has no timeout, and a failed check does not cancel the others (M).

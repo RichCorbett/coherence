@@ -54,11 +54,31 @@ test("lets every other shell command through without asking git anything", async
   assert.deepEqual(await runHook(tempFolder(), "gh pr list"), []);
 });
 
-test("text that only mentions opening a PR is not refused", async () => {
+test("ordinary commands are let through, and a mention of gh pr create, even in quoted text, is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  for (const command of [`git commit -m "run gh pr create later"`, `echo 'gh pr create'`, `grep -rn "gh pr create" src`, `cat notes-about-gh pr create`]) {
+  for (const command of [`git commit -m "fix typo"`, "npm test", "git log --oneline", "gh pr view 3", "gh pr list", `bash -c "npm run pr-check"`, "cat notes-about-gh pr create"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+  // Recognition reads the raw text, so it cannot tell a mention from a hidden command; a mention is the false deny this costs.
+  for (const command of [`git commit -m "document gh pr create"`, `echo 'gh pr create'`, `grep -rn "gh pr create" src`]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
+  }
+});
+
+test("gh pr create hidden in a heredoc body, an eval, a nested shell or a substitution is refused", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  await pass(repo.root);
+  for (const command of [
+    "cat <<EOF\n$(gh pr create --head other --title t --body b)\nEOF",
+    "eval 'gh pr create --head other'",
+    "sh -c 'gh pr create --head other'",
+    "$(printf 'gh pr create --head other')",
+    `eval "$(echo g)h pr create --head other"`,
+    `sh -c "$(printf 'g%s pr create' h)"`,
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
   }
 });
 
@@ -95,10 +115,10 @@ test("a PR opened through a wrapper, a path, a nested shell or a substitution is
   }
 });
 
-test("a heredoc body is not read as commands, and what follows it is", async () => {
+test("a heredoc that does not mention a PR is not read as one, and a PR after a heredoc is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  for (const command of ["cat > notes <<'EOF'\ngh pr create\nEOF", `git commit -m "$(cat <<'EOF'\nthen gh pr create\nEOF\n)"`]) {
+  for (const command of ["cat > notes <<'EOF'\nopen the pr later\nEOF", `git commit -m "$(cat <<'EOF'\nthen create it\nEOF\n)"`]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
   for (const command of ["cat > notes <<EOF\nit's done\nEOF\ngh pr create --title 'x'", "cat <<EOF | gh pr create --body-file -\nbody\nEOF"]) {
@@ -110,7 +130,7 @@ test("refuses to open a PR from a branch with no review, and names the branch an
   setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  const [output] = await runHook(repo.root, "git push && gh pr create --fill");
+  const [output] = await runHook(repo.root, "gh pr create --fill");
   const decision = JSON.parse(output).hookSpecificOutput;
   assert.equal(decision.permissionDecision, "deny");
   assert.match(decision.permissionDecisionReason, /feature/);
@@ -420,6 +440,168 @@ test("a PR for a named branch is refused when that branch moved after its review
 
   const [output] = await runHook(repo.root, "gh pr create --head integration --fill");
   assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /commits landed on branch integration after its coherence review/);
+});
+
+async function reviewedRepo() {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  await pass(repo.root);
+  return repo;
+}
+
+const ONE_COMMAND = /could not check it: the line is not exactly one gh pr create command with fixed words/;
+
+test("on a reviewed branch, a PR opened as one plain gh pr create command opens", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["gh pr create --fill", `gh pr create --title 'a "b"' --body "c \\"d\\" e" -a @me --attach f.png --base main`, "  gh pr create --fill\n"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("Claude Code's PR form, a body from a quoted heredoc, reaches the review check, and the body is not read as commands", async () => {
+  const standard = `gh pr create --title "t" --body "$(cat <<'EOF'\n## Summary\n- a > b, $(x) and \`y\`\nRan git commit -m x && cd ../other first.\n\nEOF\n)"`;
+  const doubleQuoted = `gh pr create -b "$(cat <<"END"\nx; git commit\nEND\n)" --fill`;
+  const unreviewed = await tempRepo({ "a.ts": "x\n" });
+  git(unreviewed.root, "checkout", "-q", "-b", "feature");
+  const repo = await reviewedRepo();
+  for (const command of [standard, doubleQuoted]) {
+    assert.match(refusal(await runHook(unreviewed.root, command)), /branch feature has not had a coherence review/, command);
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("a substitution that is not exactly a cat of a quoted heredoc, given to --body, is refused", async () => {
+  const repo = await reviewedRepo();
+  for (const [command, reason] of [
+    [`gh pr create --body "$(cat <<EOF\nx\nEOF\n)"`, ONE_COMMAND],
+    [`gh pr create --body "$(cat <<'EOF'\nx\nEOF\ngit commit -m y\nEOF\n)"`, ONE_COMMAND],
+    [`gh pr create --body "$(cat <<'EOF' ; git commit\nx\nEOF\n)"`, ONE_COMMAND],
+    [`gh pr create --body "$(cat <<'EOF'\nx\nEOF\n)"x`, ONE_COMMAND],
+    [`gh pr create --title "$(cat <<'EOF'\nt\nEOF\n)"`, /only --body may be a substitution/],
+    [`gh pr create "$(cat <<'EOF'\n-Hunreviewed\nEOF\n)"`, /cannot read a substitution as an option/],
+  ] as const) {
+    assert.match(refusal(await runHook(repo.root, command)), reason, command);
+  }
+});
+
+test("each way Dissent found to change gh's words after the gate reads them is refused", async () => {
+  const repo = await reviewedRepo();
+  for (const command of [
+    `gh pr create "$(echo -Hunreviewed)"`,
+    `gh pr create "$(printf -- --head=unreviewed)"`,
+    "gh pr create ${U:--Hunreviewed}",
+    "gh pr create --title $ARGS",
+    "printf -v PATH x; gh pr create",
+    "/usr/bin/g[h] pr create --repo o/r",
+    "gh --hostname pr pr create --repo o/r",
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), ONE_COMMAND, command);
+  }
+});
+
+test("anything but one plain gh pr create command is refused, even on a reviewed branch", async () => {
+  const repo = await reviewedRepo();
+  for (const command of [
+    "git commit -m x && gh pr create --fill",
+    "git push && gh pr create",
+    "git -C ../x status; gh pr create",
+    "gh pr checkout 3 && gh pr create",
+    "cd ../other && gh pr create",
+    "( gh pr create --fill )",
+    "cat <<'EOF' | gh pr create --body-file -\nb\nEOF",
+    "echo x > .git/HEAD; gh pr create",
+    "gh pr create --fill 2>/dev/null",
+    "gh pr create --fill\ngit commit -m x",
+    "gh pr create --fill # note",
+    "env -C .. gh pr create",
+    "GIT_DIR=../x/.git gh pr create",
+    "GH_TOKEN=abc gh pr create",
+    "export GH_REPO=o/r; gh pr create",
+    "cat() (echo); gh pr create",
+    "./gh pr create --fill",
+    "/usr/bin/gh pr create --fill",
+    "gh -R o/r pr create",
+    "gh pr -R o/r create",
+    "$(echo gh) pr create --fill",
+    "`echo gh` pr create --fill",
+    "gh pr create --title x*",
+    "gh pr create --title {a,b}",
+    "gh pr create --title ~",
+    `gh pr create --title "$HOME"`,
+    `gh pr create --title "\`id\`"`,
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), ONE_COMMAND, command);
+  }
+});
+
+for (const name of ["GH_REPO", "GH_HOST"]) {
+  test(`a PR is refused while ${name} is set in the hook's environment, since gh would follow it`, async (t) => {
+    const repo = await reviewedRepo();
+    setEnv(t, { [name]: "example.com/o/r" });
+    assert.match(refusal(await runHook(repo.root, "gh pr create --fill")), new RegExp(`${name} is set in the environment`));
+  });
+}
+
+test("a PR pointed at another repository is refused", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["gh pr create -R o/r", "gh pr create -Ro/r", "gh pr create -dR o/r", "gh pr create --repo o/r", "gh pr create --repo=o/r"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /--repo points gh at a repository the gate did not check/, command);
+  }
+});
+
+test("a word read as another option's value is not a head, even when it looks like one", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["gh pr create --title -Hnope --fill", "gh pr create -t -Hnope", "gh pr create -tHnope", "gh pr create --body=x -b -Hnope"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("a word coherence cannot read as an option is refused, since what follows it could be its value or a head", async () => {
+  const repo = await reviewedRepo();
+  for (const [command, unknown] of [
+    ["gh pr create --frobnicate -Hnope", "--frobnicate"],
+    ["gh pr create -zHnope", "-zHnope"],
+    ["gh pr create stray --fill", "stray"],
+    ["gh pr create -- --fill", "--"],
+    ["gh pr create - --fill", "-"],
+    ["gh pr create --recover state.json", "--recover"],
+    ["gh pr create --recover=state.json", "--recover=state.json"],
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`cannot read ${unknown} as an option of gh pr create`), command);
+  }
+});
+
+test("a head attached to -H is read the way gh reads it", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "integration");
+  await pass(repo.root);
+  git(repo.root, "checkout", "-q", "main");
+  git(repo.root, "branch", "unreviewed");
+  for (const command of ["gh pr create -Hintegration --fill", "gh pr create -H=integration --fill", "gh pr create -fHintegration", "gh pr create -dH integration"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+  for (const command of ["gh pr create -Hunreviewed", "gh pr create -dH unreviewed"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /branch unreviewed has not had a coherence review/, command);
+  }
+});
+
+test("a head named more than once is refused as ambiguous", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "integration");
+  await pass(repo.root);
+  git(repo.root, "branch", "unreviewed");
+  for (const command of ["gh pr create --head integration --head unreviewed", "gh pr create -H integration --head=unreviewed", "gh pr create -dHintegration -H unreviewed"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /head is named more than once/, command);
+  }
+});
+
+test("hook input that cannot be read from stdin at all is refused as unreadable", async () => {
+  const invocation = fakeInvocation(tempFolder());
+  invocation.readStdin = async () => {
+    throw new Error("EPIPE");
+  };
+  assert.equal(await gate().execute(invocation), Exit.ok);
+  assert.match(refusal(invocation.printed), /^coherence pr-gate could not read the hook input/);
 });
 
 test("a PR for a named branch that has no local commit here is refused, and says to check out or fetch it", async () => {
