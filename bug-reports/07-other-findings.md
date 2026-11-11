@@ -8,7 +8,7 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 - **MED:** the fixture `ARCHITECTURE.md` files state, word for word, the answers that `stated-the-idea` and `kept-the-good-shape` look for (M).
 - **MED:** no planted case has a precision grader, so "21 of 21" measures recall only. A report with 30 findings still passes (M).
 - **MED:** `evals/baseline.md:24-26` shows the results table mixes two reviewer configurations, and the judge and the reviewer are both Sonnet (M).
-- **Fixed (08c):** `evals/taste-applied/scaffold.sh` wrote the taste log with `>`. The eval docs say each scaffold runs with a fresh temporary `HOME` (relayed), so it should never meet a real log; the script now refuses to overwrite one that already exists, so a run outside that home fails loudly instead.
+- **Fixed (08c):** `evals/taste-applied/scaffold.sh` wrote the taste log with `>`. The eval docs say each scaffold runs with a fresh temporary `HOME` (relayed), so it should never meet a real log; the script now writes it with noclobber, so it can never overwrite an existing log. Accepted (Dissent round 2): run by hand outside the eval with no log yet, it still creates one in the real config folder; and a failed write can leave a partial log that blocks the next run.
 - **INFO:** nothing measures the headline claim, "reads like one person wrote it". The review skill, `check` and the gate have no eval coverage (M).
 
 ## Taste
