@@ -115,6 +115,25 @@ test("a PR opened through a wrapper, a path, a nested shell or a substitution is
   }
 });
 
+test("a PR whose pr or create word is an expansion is refused, and ordinary commands stay allowed", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const command of ["gh pr $'create' --fill", "gh $(echo pr) create --fill", `gh "$P" create`, "gh pr ${C}", "gh -R o/r $(printf pr) create --fill", `gh --repo o/r "$P" create`, "gh pr -R o/r $(printf create) --fill", "env gh pr $'create'", "command gh $(echo pr) create", `time gh "$P" create`, "sudo -u x gh pr ${C}", `/usr/bin/env gh "$P" create`, `/usr/bin/sudo gh pr "$A"`, `sudo -Eu user gh "$P" create`, `A+=x gh "$P" create`, "nice -n 5 gh $(printf pr) create", "gh @(pr) create", "gh pr @(create)", "gh pr +(create) --fill",
+    // An expandable first word could be gh.
+    `"$GH" "$P" create --fill`, `$GH pr "$C" --fill`, `"$GH" --repo o/r "$P" create`, `g[h] "$P" create --fill`, "g[h] pr $(printf create) --fill",
+    // A mention of gh next to an expansion is refused, like any other mention.
+    `printf '%s %s' gh "$HOME"`, `echo gh "$HOME"`]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
+  }
+  for (const command of [`git commit -m "fix typo"`, "npm test", "git log --oneline", "gh pr view 3", "gh pr list"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+  // Expansions are everyday arguments; they matter only in a gh command whose subcommand is not fixed.
+  for (const command of ["ls *.ts *.md", "cp $SRC $DST", "echo $A $B", "git diff $BASE $HEAD", `for f in $FILES; do echo "$f"; done`, "gh pr view $(git branch --show-current)", "gh api repos/o/r/pulls/1", `gh repo clone pr "$DEST"`, "gh api repos/o/r/pulls/$N", "gh pr list $X", "gh issue list", "env FOO=1 npm test", "time npm test", "command -v gh", "nohup ls *.ts", "sudo -u gh npm test", "sudo -n gh issue list", `nice -n 5 echo "$HOME"`, "nice -n 5 make", `"$PYTHON" script.py`, "$EDITOR notes.md", `"$NODE" --test x`]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
 test("a heredoc that does not mention a PR is not read as one, and a PR after a heredoc is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
