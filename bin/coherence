@@ -9,4 +9,32 @@ while [ -L "$f" ]; do
     *) f="$d/$l" ;;
   esac
 done
+
+# Preflight: the code is TypeScript run directly by node, and most commands shell out to git.
+# It asks node whether it can strip types rather than guessing from a version number.
+# Both probes read /dev/null, so the hook's JSON on stdin reaches main.ts untouched.
+missing=
+if ! node -e 'process.exit(process.features.typescript ? 0 : 1)' </dev/null >/dev/null 2>&1; then
+  if command -v node >/dev/null 2>&1; then
+    missing="the node on PATH cannot run TypeScript; install a current Node (brew install node)"
+  else
+    missing="node is not on PATH; install a current Node (brew install node)"
+  fi
+elif ! git --version </dev/null >/dev/null 2>&1; then
+  missing="git does not run (git --version failed); install git (brew install git)"
+fi
+
+if [ -n "$missing" ]; then
+  # The PR hook cannot parse its input without node, so it fails closed on any line that mentions gh
+  # as a word (also just after a JSON \n, \t or \r escape), and lets everything else through.
+  if [ "$1" = pr-gate ] && [ $# -eq 1 ]; then
+    if grep -Eq '(^|[^[:alnum:]_]|\\[nrt])gh([^[:alnum:]_]|$)'; then
+      printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"coherence cannot check this command: %s"}}\n' "$missing"
+    fi
+    exit 0
+  fi
+  echo "coherence: $missing" >&2
+  exit 4 # Exit.unavailable in src/lib/base-command.ts
+fi
+
 exec node "$(cd "$(dirname "$f")" && pwd)/../src/main.ts" "$@"

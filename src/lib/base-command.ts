@@ -1,5 +1,5 @@
-/** What a command's exit code means. */
-export const Exit = { ok: 0, findings: 1, usage: 2, failed: 3 } as const;
+/** What a command's exit code means. `unavailable` comes only from bin/coherence, when node or git cannot run. */
+export const Exit = { ok: 0, findings: 1, usage: 2, failed: 3, unavailable: 4 } as const;
 
 export type Invocation = {
   args: string[];
