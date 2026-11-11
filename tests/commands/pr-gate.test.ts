@@ -115,11 +115,40 @@ test("a branch-wide mark from an earlier version counts as not reviewed", async 
   assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /has not had a coherence review/);
 });
 
-test("stays out of the way outside a git repository and on a detached HEAD", async () => {
-  assert.deepEqual(await runHook(tempFolder(), "gh pr create --fill"), []);
+function refusal(printed: string[]): string {
+  assert.equal(printed.length, 1);
+  const decision = JSON.parse(printed[0]).hookSpecificOutput;
+  assert.equal(decision.permissionDecision, "deny");
+  return decision.permissionDecisionReason;
+}
+
+async function runRawHook(cwd: string, stdin: string) {
+  const invocation = fakeInvocation(cwd, [], stdin);
+  assert.equal(await new PrGateCommand().execute(invocation), Exit.ok);
+  return invocation.printed;
+}
+
+test("a PR opened outside a git repository is refused, since there is no commit to check", async () => {
+  const folder = tempFolder();
+  assert.match(refusal(await runHook(folder, "gh pr create --fill")), /could not check it: not a git repository/);
+});
+
+test("a PR opened on a detached HEAD is refused and asks for a branch", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "--detach");
-  assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --fill")), /HEAD is detached.*--head/);
+});
+
+test("hook input that is not JSON, or names no command, is refused when it could be opening a PR", async () => {
+  const folder = tempFolder();
+  assert.match(refusal(await runRawHook(folder, "{not json gh pr create")), /hook input was not JSON/);
+  assert.match(refusal(await runRawHook(folder, JSON.stringify({ cwd: folder, tool_input: { cmd: "gh pr create" } }))), /hook input was not JSON/);
+});
+
+test("hook input that is not JSON, or names no command, is let through when it cannot be opening a PR", async () => {
+  const folder = tempFolder();
+  assert.deepEqual(await runRawHook(folder, "{not json ls -la"), []);
+  assert.deepEqual(await runRawHook(folder, JSON.stringify({ cwd: folder, tool_input: {} })), []);
 });
 
 test("an unknown verb prints the usage and exits 2, and pass needs a branch", async () => {
@@ -157,7 +186,11 @@ test("a PR for a named branch is refused when that branch moved after its review
   assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /commits landed on branch integration after its coherence review/);
 });
 
-test("a named branch that does not exist here cannot be judged and is let through", async () => {
+test("a PR for a named branch that has no local commit here is refused, and says to check out or fetch it", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
-  assert.deepEqual(await runHook(repo.root, "gh pr create --head someone:their-branch --fill"), []);
+  for (const head of ["someone:their-branch", "not-fetched"]) {
+    const reason = refusal(await runHook(repo.root, `gh pr create --head ${head} --fill`));
+    assert.match(reason, new RegExp(`branch ${head} has no local commit here`), head);
+    assert.match(reason, /Check out or fetch the branch/, head);
+  }
 });

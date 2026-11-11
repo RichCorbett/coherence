@@ -13,6 +13,16 @@ function prCreateArgs(commandLine: string): string[] | undefined {
   return undefined;
 }
 
+/** The command and folder a PreToolUse hook names, or undefined when the input is not a hook payload. */
+function hookInput(stdin: string): { command: string; cwd?: string } | undefined {
+  try {
+    const hook = JSON.parse(stdin);
+    return typeof hook?.tool_input?.command === "string" ? { command: hook.tool_input.command, cwd: hook.cwd } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function headBranch(args: string[]): string | undefined {
   const named = args.findIndex((word) => word === "--head" || word === "-H");
   return named !== -1 ? args[named + 1] : args.find((word) => word.startsWith("--head="))?.slice("--head=".length);
@@ -28,15 +38,29 @@ export class PrGateCommand extends BaseCommand {
     if (verb === "pass") return this.pass(invocation);
     if (verb !== undefined) return this.refuse(invocation);
 
-    const hook = JSON.parse(await invocation.readStdin());
-    const args = prCreateArgs(String(hook.tool_input?.command ?? ""));
+    const stdin = await invocation.readStdin();
+    const hook = hookInput(stdin);
+    // The hook runs on every shell command, so unreadable input is refused only when it could be opening a PR.
+    if (!hook) {
+      return stdin.includes("gh") && stdin.includes("pr")
+        ? this.cannotCheck(invocation, "the hook input was not JSON naming a tool_input.command")
+        : Exit.ok;
+    }
+    const args = prCreateArgs(hook.command);
     if (!args) return Exit.ok;
 
-    // A hook that fails here would break an unrelated command, and with no branch there is nothing to hold to account.
-    const repo = await Repo.open(hook.cwd ?? invocation.cwd).catch(() => undefined);
-    const branch = headBranch(args) ?? (await repo?.currentBranch());
-    const tip = branch && (await repo?.branchCommit(branch));
-    if (!repo || !branch || !tip) return Exit.ok;
+    // Once a PR is being opened, anything that stops the gate judging it refuses the PR instead of letting it through.
+    return this.judge(invocation, hook.cwd ?? invocation.cwd, args).catch((error: unknown) =>
+      this.cannotCheck(invocation, error instanceof Error ? error.message : String(error)),
+    );
+  }
+
+  private async judge(invocation: Invocation, cwd: string, args: string[]): Promise<number> {
+    const repo = await Repo.open(cwd);
+    const branch = headBranch(args) ?? (await repo.currentBranch());
+    if (!branch) return this.cannotCheck(invocation, "HEAD is detached. Check out the PR's branch, or name it with --head, then open the PR again");
+    const tip = await repo.branchCommit(branch);
+    if (!tip) return this.cannotCheck(invocation, `branch ${branch} has no local commit here. Check out or fetch the branch, then open the PR again`);
 
     const reviewed = await repo.reviewedCommit(branch);
     if (reviewed === tip) return Exit.ok;
@@ -58,6 +82,11 @@ export class PrGateCommand extends BaseCommand {
     if (!branch) return this.refuse(invocation);
     await repo.markCommitReviewed(branch);
     invocation.print(`recorded a coherence review for ${branch} at ${(await repo.headCommit()).slice(0, 8)}`);
+    return Exit.ok;
+  }
+
+  private cannotCheck(invocation: Invocation, why: string): number {
+    this.deny(invocation, `PR refused by coherence, which could not check it: ${why}.`);
     return Exit.ok;
   }
 
