@@ -12,23 +12,64 @@ done
 
 # Preflight: the code is TypeScript run directly by node, and most commands shell out to git.
 # It asks node whether it can strip types rather than guessing from a version number.
-# Both probes read /dev/null, so the hook's JSON on stdin reaches main.ts untouched.
+# Each probe gets $limit seconds, so a hung node or git cannot run the hook into its 30-second timeout,
+# which lets the command through. Two probes at 5 seconds still leave main.ts 20 of the 30.
+# COHERENCE_PROBE_SECONDS exists for the tests, which cannot wait 5 seconds per case.
+limit=${COHERENCE_PROBE_SECONDS:-5}
+
+# Runs "$@" with no input or output and returns its exit status, or 137 if it was killed after $limit seconds.
+# Probes read /dev/null, so the hook's JSON on stdin reaches main.ts untouched, and the watchdog's
+# output is /dev/null too, so a leftover sleep cannot hold the hook's stdout open.
+probe() {
+  "$@" </dev/null >/dev/null 2>&1 &
+  probed=$!
+  (
+    trap 'kill "$timer" 2>/dev/null; exit 0' TERM
+    sleep "$limit" &
+    timer=$!
+    wait "$timer"
+    kill -9 "$probed" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  watchdog=$!
+  wait "$probed"
+  status=$?
+  kill "$watchdog" 2>/dev/null
+  wait "$watchdog"
+  return $status
+} 2>/dev/null # sh reports the kills ("Terminated", "Killed") on stderr, when it reaps each job
+
 missing=
-if ! node -e 'process.exit(process.features.typescript ? 0 : 1)' </dev/null >/dev/null 2>&1; then
-  if command -v node >/dev/null 2>&1; then
-    missing="the node on PATH cannot run TypeScript; install a current Node (brew install node)"
+if ! probe node -e 'process.exit(process.features.typescript ? 0 : 1)'; then
+  if ! command -v node >/dev/null 2>&1; then
+    missing="node is not on PATH; install a current Node, for example with brew install node"
+  elif [ "$status" -eq 137 ]; then
+    missing="node did not answer within $limit seconds"
   else
-    missing="node is not on PATH; install a current Node (brew install node)"
+    missing="the node on PATH cannot run TypeScript; install a current Node, for example with brew install node"
   fi
-elif ! git --version </dev/null >/dev/null 2>&1; then
-  missing="git does not run (git --version failed); install git (brew install git)"
+else
+  # taste and rules only read and write files, so they run without git.
+  case "$1" in
+    taste | rules) ;;
+    *)
+      if ! probe git --version; then
+        if [ "$status" -eq 137 ]; then
+          missing="git did not answer within $limit seconds"
+        else
+          missing="git does not run (git --version failed); install git, for example with brew install git"
+        fi
+      fi
+      ;;
+  esac
 fi
 
 if [ -n "$missing" ]; then
   # The PR hook cannot parse its input without node, so it fails closed on any line that mentions gh
-  # as a word (also just after a JSON \n, \t or \r escape), and lets everything else through.
+  # as a word, in any case (also just after a JSON \n, \t or \r escape), and lets everything else through.
+  # Only grep's "no match" lets the line through: a grep that is missing or fails also refuses it.
   if [ "$1" = pr-gate ] && [ $# -eq 1 ]; then
-    if grep -Eq '(^|[^[:alnum:]_]|\\[nrt])gh([^[:alnum:]_]|$)'; then
+    grep -Eiq '(^|[^[:alnum:]_]|\\[nrt])gh([^[:alnum:]_]|$)' 2>/dev/null
+    if [ $? -ne 1 ]; then
       printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"coherence cannot check this command: %s"}}\n' "$missing"
     fi
     exit 0
