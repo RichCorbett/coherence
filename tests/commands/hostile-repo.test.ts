@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, utimesSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
+import { Exit } from "../../src/lib/base-command.ts";
 import { PrGateCommand } from "../../src/commands/pr-gate.ts";
 import { setEnv, tempFolder } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
@@ -38,20 +39,40 @@ function plantNestedRepositoryThatRuns(folder: string, command: string, file: st
   return git(folder, "--git-dir=.git", "rev-parse", "HEAD");
 }
 
-// Through `pr-gate pass`, which runs both the checks and `git status`, so each plant meets a git command that would run it.
-for (const [kind, plant] of [["bare", plantBareRepositoryThatRuns], ["nested", plantNestedRepositoryThatRuns]] as const) {
-  test(`a ${kind} repository planted in the folder the review starts from cannot make git run its command`, async () => {
-    const repo = await tempRepo({ "src/lib/client.ts": "export {};\n" });
-    const ran = join(tempFolder(), "RAN");
-    const folder = join(repo.root, "src/lib");
-    const head = plant(folder, `touch ${ran}`, "client.ts");
-
-    const invocation = fakeInvocation(folder, ["pass", "--branch", "main", "--verdict", "merge", "--head", head]);
-    await new PrGateCommand(new CheckCommand()).execute(invocation).catch(() => undefined);
-
-    assert.equal(existsSync(ran), false);
-  });
+/** `touch <path>` as shell text that stays one word, so a temp folder with a space in its name cannot turn the plant into a no-op. */
+function touchCommand(path: string): string {
+  return `touch '${path.replaceAll("'", "'\\''")}'`;
 }
+
+/** A repo with `plant` set up in src/lib, and a `pr-gate pass` invocation from there for the commit the plant holds. */
+async function plantedPass(plant: (folder: string, command: string, file: string) => string) {
+  const repo = await tempRepo({ "src/lib/client.ts": "export {};\n" });
+  const ran = join(tempFolder(), "RAN");
+  const folder = join(repo.root, "src/lib");
+  const head = plant(folder, touchCommand(ran), "client.ts");
+  const invocation = fakeInvocation(folder, ["pass", "--branch", "main", "--verdict", "merge", "--head", head]);
+  return { ran, folder, head, invocation, execute: () => new PrGateCommand(new CheckCommand()).execute(invocation) };
+}
+
+// Through `pr-gate pass`, which runs both the checks and `git status`, so each plant meets a git command that would run it.
+// Each test asserts the exact outcome, so a refusal for some other reason, before git is reached, fails the test instead of passing it.
+
+test("a bare repository planted in the folder the review starts from cannot make git run its command", async () => {
+  const { ran, folder, execute } = await plantedPass(plantBareRepositoryThatRuns);
+
+  // Refused at discovery: git will not use a repository it found by walking into a folder that looks bare.
+  await assert.rejects(execute(), { message: `not a git repository: ${folder}` });
+  assert.equal(existsSync(ran), false);
+});
+
+test("a nested repository planted in the folder the review starts from cannot make git run its command", async () => {
+  const { ran, head, invocation, execute } = await plantedPass(plantNestedRepositoryThatRuns);
+
+  // A recorded review means the checks and `git status` both ran against the planted repository.
+  assert.equal(await execute(), Exit.ok);
+  assert.ok(invocation.printed.includes(`recorded a coherence review for main at ${head.slice(0, 8)}`), invocation.printed.join("\n"));
+  assert.equal(existsSync(ran), false);
+});
 
 test("a tool planted above the shared temp folder is never run", async (t) => {
   const sharedTemp = tempFolder();
@@ -60,7 +81,7 @@ test("a tool planted above the shared temp folder is never run", async (t) => {
   const ran = join(sharedTemp, "RAN");
   // Named for the exact argument coherence passes: npx puts every ancestor's node_modules/.bin on PATH and runs `madge@8.0.0` from there.
   for (const name of ["madge@8.0.0", "jscpd@5.4.3"]) {
-    writeFileSync(join(planted, name), `#!/bin/sh\ntouch ${ran}\necho '{}'\n`);
+    writeFileSync(join(planted, name), `#!/bin/sh\n${touchCommand(ran)}\necho '{}'\n`);
     chmodSync(join(planted, name), 0o755);
   }
   const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n" });
