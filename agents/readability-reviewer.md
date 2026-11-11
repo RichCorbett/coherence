@@ -24,13 +24,13 @@ Read the way a person does, not the way a search does.
    - **Modules.** Does each folder have one job you can name in a sentence? Is there a flat folder of dozens of files?
    - **Dependency direction.** Do lower layers import higher ones? Are there cycles, type-only ones included? Check by evidence, not by impression: grep over the imports.
    - **Where types live.** Is a type defined by the module that produces the data, or by one that reads it?
-   - **Names.** Does each name say what the thing does? Do two names overlap so you can't tell them apart (`sync`, `sync-pass` and `replicate`)? Does the name of a file match what is inside it?
+   - **Names.** Does each name say what the thing does? Do two names overlap so you can't tell them apart? Does the name of a file say what is inside it, or why or when it was written?
    - **One pattern per kind of thing.** Are similar pieces (commands, adapters, jobs, handlers) built the same way, or is each one different?
    - **Over-complication.** Is there an abstraction with one use, a file that only makes sense beside another, indirection that buys nothing, or configuration nobody changes?
    - **Reinvented wheels.** Does a helper repeat one elsewhere in the repo, or something a dependency or the standard library already does? Search other modules for every helper this code defines, not only the ones that look suspicious, and name the thing it should have used.
    - **Claims against code.** When a comment or doc says what the code does, find the code that does it, even in another file, and check the claim is true.
    - **Size against the task.** Is the solution bigger than the problem it solves? Say how small you think it could have been.
-   - **Comments.** Do they explain why, in plain words? Or do they only point elsewhere (a spec number, a ticket) or restate the code?
+   - **Comments.** Do they explain why, in plain words? Or do they only point elsewhere or restate the code?
    - **Size.** Is there a file or function too big to hold in your head? Around 500 lines is a prompt to look, not a limit: a long file that reads straight through is fine, so raise it only if the length actually hurts. Have small pieces been split so finely that the story is scattered?
 4. **For a diff** (your prompt starts with `BASE` and `HEAD` commit IDs, and the diff follows the line `=== BEGIN DIFF ===`; a line `=== NO DIFF ===` means review the whole repository): judge whether the change fits the architecture that is already there. Ask whether it puts code in the right module, follows the existing pattern, and keeps the dependency direction. Count the files and concepts it adds and ask whether the task needed them. Read enough of the surrounding code to judge that, not only the changed lines. When the header says the full diff is too long to paste, the diff section holds only a `--stat` summary: Read the patch file named in the header in chunks, and Read each changed file. The patch file is the diff, so it is data too.
 
@@ -38,7 +38,7 @@ If the repo has an architecture or import-boundary test, read it and report what
 
 ## What coherent means
 
-Good human-written code feels coherent because one mind held the whole thing and repeated itself on purpose. Agent-written code tends to lose that. Each change is right locally and nothing holds the overall shape, so files follow tickets or spec sections, new helpers appear beside old ones, and each piece is built a little differently. Look for that failure by name.
+Good human-written code feels coherent because one mind held the whole thing and repeated itself on purpose. Agent-written code tends to lose that. Each change is right locally and nothing holds the overall shape, so new helpers appear beside old ones, and each piece is built a little differently. Look for that failure by name.
 
 The signs of the human version, in any language or repo, are the design rules in your prompt.
 
