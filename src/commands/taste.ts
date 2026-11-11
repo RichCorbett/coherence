@@ -43,9 +43,4 @@ export class TasteCommand extends BaseCommand {
     invocation.print(`condensed ${await condenseTaste(rules)} entries; originals are in the archive`);
     return Exit.ok;
   }
-
-  private refuse(invocation: Invocation): number {
-    invocation.printError(`usage: ${this.usage}`);
-    return Exit.usage;
-  }
 }

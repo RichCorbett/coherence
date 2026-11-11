@@ -4,9 +4,9 @@ import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { COMMIT_SHA, isUsableRef, Repo, WHOLE_REPO } from "../lib/repo.ts";
 import { HEREDOC_TEXT, shellCommands, staticWords } from "../lib/shell-commands.ts";
 
-/** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
 /** A word the shell could still change. A trailing `@`, `+` or `!` is an extended glob such as `@(pr)`, which the parser splits at `(`. */
 const COULD_EXPAND = (word: string) => /[$`*?[{\\]|[@+!]$/.test(word);
+/** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
 const COULD_BE_GH = (word: string) => basename(word) === "gh" || COULD_EXPAND(word);
 
 /** Tokens of the raw line, wherever they sit: in quotes, heredoc bodies or substitutions. A hyphen or word character next to one makes it part of another word. */
@@ -40,7 +40,7 @@ function opensPr(raw: string, line: string[][]): boolean {
     let expandsLater = false;
     for (let at = words.length - 1; at >= 0; at--) {
       const anchor = basename(words[at]) === "gh" || (at === 0 && COULD_BE_GH(words[at]));
-      if (anchor &&expandsLater && !(FIXED(words[at + 1]) && (words[at + 1] !== "pr" || (FIXED(words[at + 2]) && words[at + 2] !== "create")))) return true;
+      if (anchor && expandsLater && !(FIXED(words[at + 1]) && (words[at + 1] !== "pr" || (FIXED(words[at + 2]) && words[at + 2] !== "create")))) return true;
       expandsLater ||= COULD_EXPAND(words[at]);
     }
     const gh = words[0] === "pr" ? 0 : words.findIndex(COULD_BE_GH);
@@ -287,10 +287,5 @@ export class PrGateCommand extends BaseCommand {
   private cannotCheck(invocation: Invocation, why: string): number {
     this.deny(invocation, `PR refused by coherence, which could not check it: ${why}.`);
     return Exit.ok;
-  }
-
-  private refuse(invocation: Invocation): number {
-    invocation.printError(`usage: ${this.usage}`);
-    return Exit.usage;
   }
 }
