@@ -5,7 +5,8 @@ import { COMMIT_SHA, isUsableRef, Repo } from "../lib/repo.ts";
 import { HEREDOC_TEXT, shellCommands, staticWords } from "../lib/shell-commands.ts";
 
 /** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
-const COULD_BE_GH = (word: string) => basename(word) === "gh" || /[$`*?[{\\]/.test(word);
+const COULD_EXPAND = (word: string) => /[$`*?[{\\]/.test(word);
+const COULD_BE_GH = (word: string) => basename(word) === "gh" || COULD_EXPAND(word);
 
 /** Tokens of the raw line, wherever they sit: in quotes, heredoc bodies or substitutions. A hyphen or word character next to one makes it part of another word. */
 const NAMES_PR_CREATE = /(?<![\w-])gh['"\s\\]+pr['"\s\\]+create(?![\w-])/;
@@ -15,15 +16,16 @@ const NAMES_GH_OR_PR = /(?<![\w-])(gh|pr)(?![\w-])/;
 /**
  * Whether a line could open a PR, so that it must be exactly `gh pr create` or be refused. Broad on purpose, so it also matches a
  * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or runs text as commands
- * through `eval` or `sh -c` and names `gh` or `pr`. A parsed command matches when `pr` and then `create` follow a word that is or
+ * through `eval` or `sh -c` and names `gh` or `pr`. A parsed command matches when `pr` and then `create`, each possibly an expansion such as `$'create'`, follow a word that is or
  * could become `gh`, such as `g[h]`, or when it starts with `pr`, where a substitution split it from its executable.
  */
 function opensPr(raw: string, line: string[][]): boolean {
   if (NAMES_PR_CREATE.test(raw) || (RUNS_TEXT.test(raw) && NAMES_GH_OR_PR.test(raw))) return true;
   return line.some((words) => {
     const gh = words[0] === "pr" ? 0 : words.findIndex(COULD_BE_GH);
-    const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
-    return pr !== -1 && words.indexOf("create", pr) !== -1;
+    const pr = gh === -1 ? -1 : words.findIndex((word, at) => at >= (words[0] === "pr" ? 0 : gh + 1) && (word === "pr" || COULD_EXPAND(word)));
+    // A substitution can expand to several words, so an expansion in the `pr` place may be `pr create` by itself.
+    return pr !== -1 && (COULD_EXPAND(words[pr]) || words.findIndex((word, at) => at > pr && (word === "create" || COULD_EXPAND(word))) !== -1);
   });
 }
 

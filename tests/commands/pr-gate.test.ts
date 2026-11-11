@@ -115,6 +115,17 @@ test("a PR opened through a wrapper, a path, a nested shell or a substitution is
   }
 });
 
+test("a PR whose pr or create word is an expansion is refused, and ordinary commands stay allowed", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const command of ["gh pr $'create' --fill", "gh $(echo pr) create --fill", `gh "$P" create`, "gh pr ${C}"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
+  }
+  for (const command of [`git commit -m "fix typo"`, "npm test", "git log --oneline", "gh pr view 3", "gh pr list"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
 test("a heredoc that does not mention a PR is not read as one, and a PR after a heredoc is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
