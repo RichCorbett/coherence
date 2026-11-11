@@ -75,7 +75,7 @@ test("refuses to open a PR from a branch with no review, and names the branch an
   setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  const [output] = await runHook(repo.root, "git push && gh pr create --fill");
+  const [output] = await runHook(repo.root, "gh pr create --fill");
   const decision = JSON.parse(output).hookSpecificOutput;
   assert.equal(decision.permissionDecision, "deny");
   assert.match(decision.permissionDecisionReason, /feature/);
@@ -211,31 +211,42 @@ async function reviewedRepo() {
   return repo;
 }
 
-test("on a reviewed branch, a PR opened on its own or after a command that leaves HEAD alone opens", async () => {
+test("on a reviewed branch, a PR opened as the only command on the line opens, even in a subshell, which runs in the same folder", async () => {
   const repo = await reviewedRepo();
-  for (const command of ["gh pr create --fill", "git push && gh pr create --fill", "git status; gh pr create", "GH_TOKEN=abc gh pr create"]) {
+  for (const command of ["gh pr create --fill", "( gh pr create --fill )"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
 });
 
 test("a commit on the same line as the PR is refused even on a reviewed branch, since the gate checks before it runs", async () => {
   const repo = await reviewedRepo();
-  const reason = refusal(await runHook(repo.root, "git add -A && git commit -m x && git push && gh pr create --fill"));
-  assert.match(reason, /runs git commit, which can move the branch/);
-  assert.match(reason, /Run gh pr create on its own, from the repo's folder/);
+  const reason = refusal(await runHook(repo.root, "git commit -m x && gh pr create --fill"));
+  assert.match(reason, /run gh pr create on its own, as a separate command from the repo's folder, and run git separately first/);
 });
 
-test("any git command that can move HEAD on the same line as the PR is refused", async () => {
+test("any other command on the same line as the PR is refused, and named, since the gate checks before it runs", async () => {
   const repo = await reviewedRepo();
-  for (const sub of ["merge", "rebase", "reset", "pull", "cherry-pick", "am", "revert", "stash", "switch", "checkout", "restore", "worktree", "fetch"]) {
-    assert.match(refusal(await runHook(repo.root, `git -C . ${sub} x; gh pr create`)), new RegExp(`runs git ${sub},`), sub);
+  for (const [command, first] of [
+    ["git push && gh pr create", "git"],
+    ["git -C ../x status; gh pr create", "git"],
+    ["gh pr checkout 3 && gh pr create", "gh"],
+    ["cd ../other && gh pr create", "cd"],
+    ["pushd ../other; gh pr create", "pushd"],
+    ["(cd ../other && gh pr create)", "cd"],
+    ["export GH_REPO=o/r; gh pr create", "export"],
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`runs another command; .*run ${first} separately first`), command);
   }
 });
 
-test("a folder change on the same line as the PR is refused, since gh would run somewhere the gate did not check", async () => {
+test("gh run through a wrapper is refused, since the wrapper can change where it runs", async () => {
   const repo = await reviewedRepo();
-  for (const command of ["cd ../other && gh pr create", "pushd ../other; gh pr create", "popd && gh pr create", "(cd ../other && gh pr create)"]) {
-    assert.match(refusal(await runHook(repo.root, command)), /runs (cd|pushd|popd), so gh may run in a folder the gate did not check/, command);
+  for (const [command, wrapper] of [
+    ["env -C .. gh pr create", "env"],
+    ["env --chdir=.. gh pr create", "env"],
+    ["command gh pr create", "command"],
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`gh runs through ${wrapper}, which can change where it runs`), command);
   }
 });
 
@@ -250,7 +261,6 @@ test("a PR pointed at another repository is refused", async () => {
     "GH_REPO=o/r gh pr create",
     "GH_HOST=example.com gh pr create",
     "env GH_REPO=o/r gh pr create",
-    "export GH_REPO=o/r; gh pr create",
   ]) {
     assert.match(refusal(await runHook(repo.root, command)), /points gh at a repository the gate did not check/, command);
   }

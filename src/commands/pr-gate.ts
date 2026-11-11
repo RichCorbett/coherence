@@ -3,21 +3,19 @@ import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
 
-type PrCreate = { words: string[]; gh: string[]; args: string[] };
+type PrCreate = { words: string[]; before: string[]; gh: string[]; args: string[] };
 
-/** The command on a parsed line that opens a PR: all its words, the words after `gh`, and those after `gh pr create`. Undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
+/** The command on a parsed line that opens a PR: all its words, those before `gh`, those after it, and those after `gh pr create`. Undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
 function prCreate(line: string[][]): PrCreate | undefined {
   for (const words of line) {
     const gh = words.findIndex((word) => basename(word) === "gh");
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
-    if (pr !== -1 && words[pr + 1] === "create") return { words, gh: words.slice(gh + 1), args: words.slice(pr + 2) };
+    if (pr !== -1 && words[pr + 1] === "create") return { words, before: words.slice(0, gh), gh: words.slice(gh + 1), args: words.slice(pr + 2) };
   }
   return undefined;
 }
 
-const CHANGES_FOLDER = new Set(["cd", "pushd", "popd"]);
-const MOVES_HEAD = new Set(["commit", "merge", "rebase", "reset", "pull", "cherry-pick", "am", "revert", "stash", "switch", "checkout", "restore", "worktree", "fetch"]);
-const ON_ITS_OWN = "Run gh pr create on its own, from the repo's folder";
+const ON_ITS_OWN = "run gh pr create on its own, as a separate command from the repo's folder";
 
 /** Whether `word` is a group of short options, such as `-H`, `-Hvalue` or `-dH`, that contains `letter`. */
 function shortOption(word: string, letter: string): boolean {
@@ -28,20 +26,16 @@ function namesHead(word: string): boolean {
   return word === "--head" || word.startsWith("--head=") || shortOption(word, "H");
 }
 
-/** Why the gate cannot judge this line, or undefined when it can. The hook runs before the whole line, so anything else on it that moves HEAD, changes folder or points gh elsewhere would make the gate judge the wrong commit. */
+/** Why the gate cannot judge this line, or undefined when it can. The hook runs before the whole line, so the gh command must be all the line runs, run directly, aimed at this folder's repository. Anything else could move HEAD, change folder or point gh elsewhere first. */
 function unjudgeable(line: string[][], pr: PrCreate): string | undefined {
-  for (const words of line) {
-    if (words === pr.words) continue;
-    const folder = words.find((word) => CHANGES_FOLDER.has(word));
-    if (folder) return `the same line runs ${folder}, so gh may run in a folder the gate did not check. ${ON_ITS_OWN}`;
-    const git = words.findIndex((word) => basename(word) === "git");
-    const moves = git === -1 ? undefined : words.slice(git + 1).find((word) => MOVES_HEAD.has(word));
-    if (moves) return `the same line runs git ${moves}, which can move the branch after the gate checks it. ${ON_ITS_OWN}`;
-  }
+  const other = line.find((words) => words !== pr.words);
+  if (other) return `the same line runs another command; ${ON_ITS_OWN}, and run ${other[0]} separately first`;
   const retarget =
-    line.flat().find((word) => /^GH_(REPO|HOST)=/.test(word)) ??
+    pr.words.find((word) => /^GH_(REPO|HOST)=/.test(word)) ??
     pr.gh.find((word) => word === "--repo" || word.startsWith("--repo=") || shortOption(word, "R"));
-  if (retarget) return `${retarget} points gh at a repository the gate did not check. ${ON_ITS_OWN}`;
+  if (retarget) return `${retarget} points gh at a repository the gate did not check; ${ON_ITS_OWN}`;
+  const wrapper = pr.before.find((word) => !/^[A-Za-z_]\w*=/.test(word));
+  if (wrapper) return `gh runs through ${wrapper}, which can change where it runs; ${ON_ITS_OWN}, without ${wrapper}`;
   const heads = pr.args.filter(namesHead);
   if (heads.length > 1 || heads.some((word) => shortOption(word, "H") && !word.startsWith("-H"))) {
     return "the PR's head is named more than once or inside a group of short options. Name it once, with --head <branch>";
