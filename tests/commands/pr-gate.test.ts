@@ -295,6 +295,15 @@ test("pass re-runs the checks and refuses when they find something, over the bas
   assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
 });
 
+test("pass with a base answers only for what the branch changed, as check --base does", async () => {
+  const repo = await tempRepo(CYCLE);
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  writeFiles(repo.root, { "src/b/new.ts": "export const fresh = 1;\n" });
+  git(repo.root, "add", "-A");
+  git(repo.root, "commit", "-q", "-m", "unrelated work");
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+});
+
 test("pass records the head and the base it was given, and a later pass without a base drops the old one", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   const main = git(repo.root, "rev-parse", "main");
