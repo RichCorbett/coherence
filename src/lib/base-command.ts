@@ -23,4 +23,10 @@ export abstract class BaseCommand {
       JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } }),
     );
   }
+
+  /** Reports a usage error: the command's usage line on stderr, and the usage exit code. */
+  protected refuse(invocation: Invocation): number {
+    invocation.printError(`usage: ${this.usage}`);
+    return Exit.usage;
+  }
 }

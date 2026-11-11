@@ -37,7 +37,7 @@ export class ReviewInputCommand extends BaseCommand {
     const patchFile = patch !== undefined && tooLong ? await this.keep(patch) : undefined;
 
     const header = [`BASE ${baseId ?? "none"}`, `HEAD ${headId}`, `BRANCH ${(await repo.currentBranch()) ?? "none"}`];
-    if (patchFile) header.push(`The full diff is ${patchLines} lines, too long to paste (over 3000 lines or 200 KB). Read it in chunks from ${patchFile}`);
+    if (patchFile) header.push(`The full diff is ${patchLines} lines, too long to paste (over ${PASTE_LIMIT_LINES} lines or ${PASTE_LIMIT_BYTES / 1024} KB). Read it in chunks from ${patchFile}`);
     invocation.print(header.join("\n"));
     invocation.print(`=== OWNER TASTE ===\n${(await readTaste()).trimEnd()}`);
     invocation.print(`=== DESIGN RULES ===\n${(await readPluginFile("rules/design.md")).trimEnd()}`);
@@ -52,7 +52,7 @@ export class ReviewInputCommand extends BaseCommand {
 
   /** Writes the patch outside the repo under review, and leaves it there for the reviewer to Read. */
   private async keep(patch: string): Promise<string> {
-    const file = join(await makeCacheFolder("review-"), "change.patch");
+    const file = join(await makeCacheFolder(PATCH_FOLDER_PREFIX), "change.patch");
     await writeFile(file, patch, { mode: 0o600 });
     return file;
   }
