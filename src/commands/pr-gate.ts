@@ -13,43 +13,34 @@ const NAMES_PR_CREATE = /(?<![\w-])gh['"\s\\]+pr['"\s\\]+create(?![\w-])/;
 const RUNS_TEXT = /(?<![\w-])(eval|(ba|z|da)?sh\s+-[a-z]*c)(?![\w-])/;
 const NAMES_GH_OR_PR = /(?<![\w-])(gh|pr)(?![\w-])/;
 
-const WRAPPERS = new Set(["env", "command", "builtin", "exec", "time", "nice", "nohup", "sudo"]);
-/** An option of a wrapper that takes a value, so the word after it is not the executable: `env -u X`, `sudo -u user`, `nice -n 5`. A long option is read the same way. */
-const WRAPPER_TAKES_VALUE = /^(-[unCgDGhpPrRStTU]|--(?!$)[^=]*)$/;
-
-/** Where the executable is once leading `NAME=value` words and wrappers with their options are skipped, or -1 when a wrapper's option cannot be read. */
-function executableAt(words: string[]): number {
-  let at = 0;
-  while (at < words.length && (/^\w+=/.test(words[at]) || WRAPPERS.has(words[at]))) {
-    if (!WRAPPERS.has(words[at++])) continue;
-    while (words[at]?.startsWith("-")) {
-      if (WRAPPER_TAKES_VALUE.test(words[at])) return -1;
-      at++;
-    }
-  }
-  return at;
-}
+/** A literal word that is not an option, so it is what it reads as. */
+const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && !COULD_EXPAND(word);
 
 /**
  * Whether a line could open a PR, so that it must be exactly `gh pr create` or be refused. Broad on purpose, so it also matches a
  * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or runs text as commands
  * through `eval` or `sh -c` and names `gh` or `pr`. A parsed command matches when `pr` and then `create` follow a word that is or
  * could become `gh`, such as `g[h]`, or when it starts with `pr`, where a substitution split it from its executable. It also matches
- * a command that runs `gh`, directly or behind assignments and wrappers such as `env` or `sudo`, with an expandable word, unless the subcommand is fixed and is not `pr create`.
+ * a command with a word that is literally `gh`, wherever it sits, and an expandable word after it, unless that gh's subcommand is
+ * fixed and is not `pr create`.
+ *
+ * Considered and rejected: finding the executable by skipping wrappers (`env`, `sudo`, `nice`) and their options. It needs a table
+ * of which options take a value, and the table grew its own bypasses (`/usr/bin/env`, `sudo -Eu user`, `A+=x`). Looking at every
+ * `gh` word needs no table. Accepted costs: a fully dynamic executable such as `"$GH" "$P" create` is not seen, the documented
+ * `$CMD` class; and `printf '%s %s' gh "$HOME"` is refused, which falls under "a mention of gh is refused".
  */
 function opensPr(raw: string, line: string[][]): boolean {
   if (NAMES_PR_CREATE.test(raw) || (RUNS_TEXT.test(raw) && NAMES_GH_OR_PR.test(raw))) return true;
   return line.some((words) => {
-    // A command that runs gh and has an expandable word is a candidate unless its subcommand is proven fixed and not `pr create`:
-    // an option or an expansion where the subcommand belongs could hide `pr` or `create`, and prOptions then refuses it.
-    // A wrapper option that cannot be read hides where gh is, so such a line is a candidate if it names gh or expands anything.
-    const exe = executableAt(words);
-    if (exe === -1 && words.some((word) => basename(word) === "gh" || COULD_EXPAND(word))) return true;
-    if (exe !== -1 && basename(words[exe]) === "gh" && words.some(COULD_EXPAND)) {
-      const sub = words.slice(exe + 1);
-      const fixed = (word?: string) => word !== undefined && !word.startsWith("-") && !COULD_EXPAND(word);
-      if (!(fixed(sub[0]) && (sub[0] !== "pr" || (fixed(sub[1]) && sub[1] !== "create")))) return true;
-    }
+    // A gh with an expandable word after it is a candidate unless its subcommand is proven fixed and not `pr create`: an option or
+    // an expansion where the subcommand belongs could hide `pr` or `create`, and prOptions then refuses it.
+    const hidden = words.some(
+      (word, at) =>
+        basename(word) === "gh" &&
+        words.slice(at + 1).some(COULD_EXPAND) &&
+        !(FIXED(words[at + 1]) && (words[at + 1] !== "pr" || (FIXED(words[at + 2]) && words[at + 2] !== "create"))),
+    );
+    if (hidden) return true;
     const gh = words[0] === "pr" ? 0 : words.findIndex(COULD_BE_GH);
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
     return pr !== -1 && words.indexOf("create", pr) !== -1;
