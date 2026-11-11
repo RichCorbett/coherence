@@ -64,6 +64,7 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 ## Tests that cannot fail
 
 - `hostile-repo.test.ts`: the TMPDIR test cannot fail. The code uses `~/.cache`, and the planted bins are named `madge@8.0.0`, which npx never looks up (M). The fsmonitor half would likely pass with the defense removed (I).
+- **Fixed (08b):** each git flag now has its own plant that only it stops (bare repo + clean filter; nested repo + fsmonitor), and each fails when its flag is removed. The TMPDIR test already failed with the defense removed: npm 10.9.8 npx runs a literal `madge@8.0.0` from an ancestor `node_modules/.bin`. The stdin test now fails instead of hanging.
 
 ## Docs
 
