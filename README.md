@@ -114,6 +114,13 @@ Evals spend real money, about $6 for all the cases at 3 runs each:
 claude plugin eval . --scaffold --runs 3 --trust-plugin --ablation none --no-publish --allow-tools Bash --judge-model sonnet
 ```
 
+The eval's sandbox blocks the home folder, except `~/.local/bin`, and Apple's developer tools, so it needs:
+
+- **Node and git reachable from outside the home folder**, for example from Homebrew in `/opt/homebrew/bin`. A `~/.local/bin/node` that links back into the home folder is not enough, and neither is Apple's `/usr/bin/git`, which hands off to the blocked CommandLineTools.
+- **No `coherence` on PATH.** Under `plugin eval` the plugin's `bin/` is not on the agent's PATH, so each reviewer case's scaffold writes `.coherence-bin/coherence`, which starts this copy of the plugin, and the prompt runs that. It is left out of the case's git repo, so nothing reviews it.
+
+Each reviewer case has a `ran-review-input` grader. When it fails, the first step failed and the case's other scores mean no review ran, not a bad one.
+
 ## License
 
 MIT
