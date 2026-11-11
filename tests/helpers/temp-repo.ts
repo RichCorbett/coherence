@@ -3,8 +3,9 @@ import type { Invocation } from "../../src/lib/base-command.ts";
 import { Repo } from "../../src/lib/repo.ts";
 import { tempFolder, writeFiles, type Files } from "./sandbox.ts";
 
-export function git(root: string, ...args: string[]): void {
-  execFileSync("git", ["-c", "user.name=test", "-c", "user.email=test@example.com", ...args], { cwd: root, stdio: "pipe" });
+/** Runs git in `root` and returns what it printed, trimmed. */
+export function git(root: string, ...args: string[]): string {
+  return execFileSync("git", ["-c", "user.name=test", "-c", "user.email=test@example.com", ...args], { cwd: root, stdio: "pipe", encoding: "utf8" }).trim();
 }
 
 /** A real git repository holding `files` in one commit on `main`. */

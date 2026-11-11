@@ -17,7 +17,8 @@ function git(args: string[], cwd: string): Promise<ProcessResult> {
 // A ref from a person or a skill is checked before git sees it, so it can never pass for an option or carry shell syntax along.
 const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
 
-const COMMIT_SHA = /^[0-9a-f]{40,64}$/;
+/** A full commit ID, never an abbreviation that could come to name a different commit. */
+export const COMMIT_SHA = /^[0-9a-f]{40,64}$/;
 
 function firstLine(text: string): string {
   return text.trim().split("\n")[0];
@@ -26,6 +27,13 @@ function firstLine(text: string): string {
 function reviewedKey(branch: string): string {
   return `branch.${branch}.coherence-reviewed`;
 }
+
+function reviewedBaseKey(branch: string): string {
+  return `${reviewedKey(branch)}-base`;
+}
+
+// `git config --unset` exits 5 when the key was never set, which leaves the same result.
+const CONFIG_KEY_ABSENT = 5;
 
 /** The git repository under review. Every check sees the code through this one view. */
 export class Repo {
@@ -98,10 +106,19 @@ export class Repo {
     return COMMIT_SHA.test(stored) ? stored : undefined;
   }
 
-  /** Records that the commit now at HEAD was reviewed. */
-  async markCommitReviewed(branch: string): Promise<void> {
-    const result = await git(["config", reviewedKey(branch), await this.headCommit()], this.root);
-    if (result.code !== 0) throw new Error(`git config failed: ${result.stderr.trim()}`);
+  /** Records that commit `headId` was reviewed, and the base it was reviewed against. A pass without a base drops any older base, so the two always belong to one review. */
+  async markCommitReviewed(branch: string, headId: string, baseId?: string): Promise<void> {
+    const head = await git(["config", reviewedKey(branch), headId], this.root);
+    if (head.code !== 0) throw new Error(`git config failed: ${head.stderr.trim()}`);
+    const base = await git(baseId ? ["config", reviewedBaseKey(branch), baseId] : ["config", "--unset", reviewedBaseKey(branch)], this.root);
+    if (base.code !== 0 && !(baseId === undefined && base.code === CONFIG_KEY_ABSENT)) throw new Error(`git config failed: ${base.stderr.trim()}`);
+  }
+
+  /** True when a tracked file differs from HEAD, staged or not. Untracked files are not part of any commit, so they do not count. */
+  async hasUncommittedChanges(): Promise<boolean> {
+    const result = await git(["status", "--porcelain", "--untracked-files=no"], this.root);
+    if (result.code !== 0) throw new Error(`git status failed: ${firstLine(result.stderr)}`);
+    return result.stdout.trim() !== "";
   }
 
   async exists(path: string): Promise<boolean> {

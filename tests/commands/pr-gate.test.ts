@@ -1,19 +1,46 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { CheckCommand } from "../../src/commands/check.ts";
 import { PrGateCommand } from "../../src/commands/pr-gate.ts";
 import { Exit } from "../../src/lib/base-command.ts";
-import { setEnv, tempFolder } from "../helpers/sandbox.ts";
+import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
+
+/** The gate wired as main.ts wires it. */
+function gate() {
+  return new PrGateCommand(new CheckCommand());
+}
 
 async function runHook(cwd: string, command: string) {
   const invocation = fakeInvocation(cwd, [], JSON.stringify({ cwd, tool_name: "Bash", tool_input: { command } }));
-  assert.equal(await new PrGateCommand().execute(invocation), Exit.ok);
+  assert.equal(await gate().execute(invocation), Exit.ok);
   return invocation.printed;
 }
 
-function pass(cwd: string) {
-  return new PrGateCommand().execute(fakeInvocation(cwd, ["pass"]));
+/** Runs `pr-gate pass` with exactly `args`, and returns the exit code and the one-line reason it printed. */
+async function passWith(cwd: string, args: string[]) {
+  const invocation = fakeInvocation(cwd, ["pass", ...args]);
+  const code = await gate().execute(invocation);
+  return { code, error: invocation.errors.join("\n") };
 }
+
+/** Records a merge verdict for the commit now at HEAD, as the review skill does. */
+async function pass(cwd: string, ...extra: string[]) {
+  return (await passWith(cwd, ["--verdict", "merge", "--head", git(cwd, "rev-parse", "HEAD"), ...extra])).code;
+}
+
+function recorded(cwd: string, key: string): string | undefined {
+  try {
+    return git(cwd, "config", "--get", `branch.feature.${key}`);
+  } catch {
+    return undefined;
+  }
+}
+
+const CYCLE = {
+  "src/a/a.ts": 'import { b } from "./b.ts";\nexport const a = b;\n',
+  "src/a/b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
+};
 
 test("lets every other shell command through without asking git anything", async () => {
   assert.deepEqual(await runHook(tempFolder(), "gh pr list"), []);
@@ -134,7 +161,7 @@ function refusal(printed: string[]): string {
 
 async function runRawHook(cwd: string, stdin: string) {
   const invocation = fakeInvocation(cwd, [], stdin);
-  assert.equal(await new PrGateCommand().execute(invocation), Exit.ok);
+  assert.equal(await gate().execute(invocation), Exit.ok);
   return invocation.printed;
 }
 
@@ -182,11 +209,106 @@ test("a hook folder that is not a non-empty string is ignored, and the PR is jud
 test("an unknown verb prints the usage and exits 2, and pass needs a branch", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   const unknown = fakeInvocation(repo.root, ["maybe"]);
-  assert.equal(await new PrGateCommand().execute(unknown), Exit.usage);
+  assert.equal(await gate().execute(unknown), Exit.usage);
   assert.match(unknown.errors[0], /^usage: coherence pr-gate/);
 
   git(repo.root, "checkout", "-q", "--detach");
-  assert.equal(await pass(repo.root), Exit.usage);
+  const head = git(repo.root, "rev-parse", "HEAD");
+  const detached = await passWith(repo.root, ["--verdict", "merge", "--head", head]);
+  assert.equal(detached.code, Exit.findings);
+  assert.match(detached.error, /^coherence pr-gate pass refused: HEAD is detached/);
+});
+
+test("pass refuses without a verdict or a head, and records nothing", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const head = git(repo.root, "rev-parse", "HEAD");
+  for (const args of [[], ["--head", head], ["--verdict", "merge"]]) {
+    const refused = await passWith(repo.root, args);
+    assert.equal(refused.code, Exit.usage, args.join(" "));
+    assert.match(refused.error, /refused: it needs --verdict and --head/, args.join(" "));
+  }
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
+test("pass refuses a fix first or rework verdict, and the PR stays refused", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const head = git(repo.root, "rev-parse", "HEAD");
+  for (const verdict of ["fix first", "rework", "Merge"]) {
+    const refused = await passWith(repo.root, ["--verdict", verdict, "--head", head]);
+    assert.equal(refused.code, Exit.findings, verdict);
+    assert.match(refused.error, new RegExp(`the verdict was "${verdict}", and only a merge verdict is recorded`), verdict);
+  }
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+  assert.equal((await runHook(repo.root, "gh pr create --fill")).length, 1);
+});
+
+test("pass refuses a head that is not the current HEAD", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const reviewed = git(repo.root, "rev-parse", "HEAD");
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "after the review");
+  const refused = await passWith(repo.root, ["--verdict", "merge", "--head", reviewed]);
+  assert.equal(refused.code, Exit.findings);
+  assert.match(refused.error, new RegExp(`HEAD is now ${git(repo.root, "rev-parse", "HEAD")}, not the reviewed ${reviewed}`));
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
+test("pass refuses a short commit ID, even one that names HEAD", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const refused = await passWith(repo.root, ["--verdict", "merge", "--head", git(repo.root, "rev-parse", "--short", "HEAD")]);
+  assert.equal(refused.code, Exit.usage);
+  assert.match(refused.error, /--head must be a full commit ID/);
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
+test("pass refuses while tracked files have uncommitted changes, staged or not, but not for an untracked file", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  writeFiles(repo.root, { "a.ts": "changed\n" });
+  for (const stage of [false, true]) {
+    if (stage) git(repo.root, "add", "a.ts");
+    const refused = await passWith(repo.root, ["--verdict", "merge", "--head", git(repo.root, "rev-parse", "HEAD")]);
+    assert.equal(refused.code, Exit.findings, `staged: ${stage}`);
+    assert.match(refused.error, /tracked files have uncommitted changes/, `staged: ${stage}`);
+  }
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+
+  git(repo.root, "reset", "-q", "--hard");
+  writeFiles(repo.root, { "notes.txt": "scratch\n" });
+  assert.equal(await pass(repo.root), Exit.ok);
+});
+
+test("pass re-runs the checks and refuses when they find something, over the base it is given or the whole repo", async () => {
+  const repo = await tempRepo({ "src/a/a.ts": CYCLE["src/a/a.ts"], "src/a/b.ts": "export const b = 1;\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  writeFiles(repo.root, { "src/a/b.ts": CYCLE["src/a/b.ts"] });
+  git(repo.root, "commit", "-q", "-am", "close the cycle");
+  const main = git(repo.root, "rev-parse", "main");
+  for (const extra of [["--base", main], []]) {
+    const refused = await passWith(repo.root, ["--verdict", "merge", "--head", git(repo.root, "rev-parse", "HEAD"), ...extra]);
+    assert.equal(refused.code, Exit.findings, extra.join(" "));
+    assert.match(refused.error, /refused: coherence check reports findings, listed above/, extra.join(" "));
+  }
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
+test("pass records the head and the base it was given, and a later pass without a base drops the old one", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  const main = git(repo.root, "rev-parse", "main");
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "work");
+  const head = git(repo.root, "rev-parse", "HEAD");
+
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  assert.equal(recorded(repo.root, "coherence-reviewed"), head);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), main);
+
+  assert.equal(await pass(repo.root), Exit.ok);
+  assert.equal(recorded(repo.root, "coherence-reviewed"), head);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
 });
 
 test("a PR for a named branch is judged by that branch, whichever branch this folder is on", async () => {

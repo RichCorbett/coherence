@@ -1,6 +1,7 @@
 import { basename } from "node:path";
+import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
-import { Repo } from "../lib/repo.ts";
+import { COMMIT_SHA, Repo } from "../lib/repo.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
 
 /** The words after `gh pr create`, or undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
@@ -29,6 +30,18 @@ function headBranch(args: string[]): string | undefined {
   return named !== -1 ? args[named + 1] : args.find((word) => word.startsWith("--head="))?.slice("--head=".length);
 }
 
+type PassOptions = { verdict?: string; head?: string; base?: string };
+
+/** The options `pr-gate pass` was given, or why they cannot be read. */
+function passOptions(args: string[]): PassOptions | string {
+  try {
+    const options = { verdict: { type: "string" }, head: { type: "string" }, base: { type: "string" } } as const;
+    return parseArgs({ args, options, strict: true }).values;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 const UNREADABLE_HOOK =
   "coherence pr-gate could not read the hook input, so it cannot tell whether this command opens a PR. " +
   "Claude Code's hook format may have changed: update or disable the coherence plugin.";
@@ -36,7 +49,16 @@ const UNREADABLE_HOOK =
 /** Refuses to open a pull request unless the commit it would publish has had a coherence review, and records when one has. */
 export class PrGateCommand extends BaseCommand {
   readonly name = "pr-gate";
-  readonly usage = "coherence pr-gate [pass]  (PreToolUse hook on stdin; pass records that the current commit was reviewed)";
+  readonly usage =
+    "coherence pr-gate [pass --verdict merge --head <commit id> [--base <commit id>]]  (PreToolUse hook on stdin; pass records that the review approved HEAD)";
+
+  /** The `check` command, which `pass` runs again before recording. Commands may not import each other, so main.ts hands it over. */
+  private readonly check: BaseCommand;
+
+  constructor(check: BaseCommand) {
+    super();
+    this.check = check;
+  }
 
   async execute(invocation: Invocation): Promise<number> {
     const [verb] = invocation.args;
@@ -77,13 +99,35 @@ export class PrGateCommand extends BaseCommand {
     return Exit.ok;
   }
 
+  /** Records a review only when it approved exactly the commit at HEAD, and the rules still find nothing there. */
   private async pass(invocation: Invocation): Promise<number> {
+    const options = passOptions(invocation.args.slice(1));
+    if (typeof options === "string") return this.refusePass(invocation, options, Exit.usage);
+    const { verdict, head, base } = options;
+    if (verdict === undefined || head === undefined) return this.refusePass(invocation, "it needs --verdict and --head", Exit.usage);
+    if (verdict !== "merge") return this.refusePass(invocation, `the verdict was "${verdict}", and only a merge verdict is recorded`);
+    if (!COMMIT_SHA.test(head)) return this.refusePass(invocation, `--head must be a full commit ID, not ${head.slice(0, 80)}`, Exit.usage);
+
     const repo = await Repo.open(invocation.cwd);
     const branch = await repo.currentBranch();
-    if (!branch) return this.refuse(invocation);
-    await repo.markCommitReviewed(branch);
-    invocation.print(`recorded a coherence review for ${branch} at ${(await repo.headCommit()).slice(0, 8)}`);
+    if (!branch) return this.refusePass(invocation, "HEAD is detached, so there is no branch to record the review on");
+    const current = await repo.headCommit();
+    if (head !== current) return this.refusePass(invocation, `HEAD is now ${current}, not the reviewed ${head}. Review again`);
+    // The checks read the working tree, so it must hold exactly the reviewed commit.
+    if (await repo.hasUncommittedChanges()) return this.refusePass(invocation, "tracked files have uncommitted changes, so the tree is not the reviewed commit");
+    const baseId = base === undefined ? undefined : await repo.resolveCommit(base);
+    // Over the same scope the review used, so the recorded base and the checked base are one commit.
+    const checked = await this.check.execute({ ...invocation, args: baseId ? ["--base", baseId] : [] });
+    if (checked !== Exit.ok) return this.refusePass(invocation, "coherence check reports findings, listed above. Fix them and review again");
+
+    await repo.markCommitReviewed(branch, head, baseId);
+    invocation.print(`recorded a coherence review for ${branch} at ${head.slice(0, 8)}`);
     return Exit.ok;
+  }
+
+  private refusePass(invocation: Invocation, why: string, code: number = Exit.findings): number {
+    invocation.printError(`coherence pr-gate pass refused: ${why}.`);
+    return code;
   }
 
   private cannotCheck(invocation: Invocation, why: string): number {
