@@ -4,7 +4,7 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 
 ## Eval validity
 
-- **HIGH: eval answer leak (fixed by this commit; the example is now `sync`, `sync-pass` and `replicate`).** `agents/readability-reviewer.md:23` and `rules/design.md:9` name `intake`, `intake-pass` and `ingest`, the exact files the `no-shape/found-overlapping-names` grader scores. A reviewer can pass by pattern-matching (M).
+- **HIGH: eval answer leak (fixed).** The reviewer's instructions and the design rules used, as their example of overlapping names, the exact file names an eval fixture plants and its grader scores, so a reviewer could pass by pattern-matching. The examples now share no word with any fixture. The names are left out here on purpose, because the reviewer can read this folder (M).
 - **MED:** the fixture `ARCHITECTURE.md` files state, word for word, the answers that `stated-the-idea` and `kept-the-good-shape` look for (M).
 - **MED:** no planted case has a precision grader, so "21 of 21" measures recall only. A report with 30 findings still passes (M).
 - **MED:** `evals/baseline.md:24-26` shows the results table mixes two reviewer configurations, and the judge and the reviewer are both Sonnet (M).
