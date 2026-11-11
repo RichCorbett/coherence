@@ -46,7 +46,7 @@ Taste is text the reviewer, and anything that writes code, reads before working.
 
 ## Install
 
-Needs Node 26 or newer, because the TypeScript runs directly with no build step. The checks fetch pinned versions of madge and jscpd through `npx`, so the plugin has no install step of its own.
+Needs Node 26 or newer, because the TypeScript runs directly with no build step. The checks fetch madge and jscpd through `npx`, so the plugin has no install step of its own. Only their top-level versions are pinned; their dependencies are whatever npm resolves when it runs.
 
 ```sh
 claude plugin marketplace add grreardon/coherence
@@ -85,10 +85,13 @@ coherence taste condense                  replace the rules with stdin and archi
 
 - The PR hook stops an agent from publishing unreviewed work through the ordinary `gh pr create` command. It is not a boundary against an agent that deliberately hides the command, through expansions, `eval`, functions defined earlier or `gh api`; hard enforcement belongs to GitHub branch protection with a required check. It judges only a Bash line that is exactly `gh pr create` with fixed words, and refuses any other line that mentions it, even in a commit message. It ties the review to the commit at HEAD, so later commits need a new review. `pr-gate pass` records only a merge verdict on a clean tree with clean checks. It re-reads HEAD and the tree after the checks, but a file edited and put back while they run is not caught. And the record is a git config value (`branch.<name>.coherence-reviewed`), so an agent with Bash can still forge it with `git config`.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
+- The taste file is one global file for all your repos, written on Claude's judgment, and the reviewer treats it as its standard. Text from a hostile repo that gets recorded there changes every later review, in every repo. Read what it records.
 - The evals measure the reviewer and the taste skill, on tiny samples. They were last run with the reviewer on Sonnet. See `evals/baseline.md`.
 - The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools and no Bash: the review skill runs `coherence review-input` in your session, which prints the taste, the rules and the diff, and hands it the text. It can still Read files anywhere on disk if a repo misleads it, because Claude Code agent files cannot restrict paths. Review code from strangers in an isolated checkout or a sandbox.
 
 ## How well it works
+
+These numbers predate two changes: the reviewer losing Bash, and the rule to drop findings a preference says not to flag (see `evals/baseline.md`). They have not been measured on the current pipeline.
 
 These results are from the reviewer on Sonnet, at 3 runs per case on tiny sample repos. The full history is in `evals/baseline.md`.
 

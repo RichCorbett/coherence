@@ -8,7 +8,7 @@ description: Records the owner's design preferences so future code and reviews f
 The agents that write and review code read this log before they work, so one wrong entry steers everything after it. Record what the owner would want applied next time, and nothing else.
 
 1. **Check it isn't known.** Run `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste`. If the preference is already there, stop.
-2. **Write one line that says what the owner wants.** State the general preference, close to their words, without project or file names. "Don't add a factory for something with one use", not "the notifier factory in app X was too much". When they turn down a review finding, the line says what to stop flagging: "A helper used twice is fine, don't flag it".
+2. **Write one line that says what the owner wants.** State the general preference, close to their words, without project or file names. "Don't add a wrapper class for something with one use", not "the cache wrapper in app X was too much". When they turn down a review finding, the line says what to stop flagging: "A helper used twice is fine, don't flag it".
 3. **Record it.** Run `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste add "<line>"`.
 4. **Say so in one short line,** and carry on with what they asked: `Added to taste: <line>. Say "drop that" to undo it.`
 

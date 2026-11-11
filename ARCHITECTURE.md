@@ -5,7 +5,7 @@
 Agent-written code loses coherence because each agent sees one slice and nobody holds the whole. This plugin checks
 what comes back for fit, and it does not write code. It gives that check three moments, each with one job:
 
-1. **By rule:** checks catch what needs no judgment (cycles, duplication, flat folders, a missing architecture doc).
+1. **By rule:** checks catch what needs no judgment (cycles, duplication, flat folders).
 2. **By judgment:** a reviewer reads the code as a newcomer would, holds it to the design rules, and a pull request is refused until the commit at HEAD has had that review.
 3. **Whenever the owner corrects a design:** the taste skill records it, so the reviewer, and anything that reads `coherence taste`, follows it next time.
 
