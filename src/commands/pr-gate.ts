@@ -197,13 +197,15 @@ export class PrGateCommand extends BaseCommand {
     if (reviewedBase === WHOLE_REPO) return undefined;
     if (!reviewedBase) return `the coherence review of branch ${branch} records no base it was reviewed against. Run /coherence:review <base> again with the PR's base`;
     const short = reviewedBase.slice(0, 8);
-    const again = `Run /coherence:review <base> against the PR's base, or open the PR with --base naming the reviewed base ${short}`;
+    const again = `Run /coherence:review <base> against the PR's base, or open the PR with --base naming a branch at the reviewed base ${short}`;
     const named = options(args).found.filter(([name]) => name === "base");
     if (named.length === 0) return `branch ${branch} was reviewed against ${short}, and the PR does not name its base. ${again}`;
     if (named.length > 1) return "the PR's base is named more than once. Name it once, with --base <branch>";
     const base = named[0][1] ?? "";
-    const baseId = await repo.resolveCommit(base).catch(() => undefined);
-    if (!baseId) return `the PR's base ${base.slice(0, 80)} is not a commit here, so the gate cannot tell whether the review read this diff. ${again}`;
+    // gh's --base is always a branch, so only the local branch of that name counts; a tag or a commit ID that git would find first does not.
+    if (!isUsableRef(base)) return `the PR's base ${base.slice(0, 80)} is not a plain branch name. ${again}`;
+    const baseId = await repo.branchCommit(base);
+    if (!baseId) return `the PR's base ${base} has no local branch here, so the gate cannot tell whether the review read this diff. Fetch or create the local branch ${base}, then open the PR again`;
     if (baseId !== reviewedBase) return `branch ${branch} was reviewed against ${short}, but the PR's base ${base} is ${baseId.slice(0, 8)}, so the PR holds changes the review never read. ${again}`;
     return undefined;
   }

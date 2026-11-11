@@ -189,12 +189,31 @@ async function twoCommitFeature() {
   return repo;
 }
 
-test("a review against a base lets the PR open only when it names that base, by any name", async () => {
+test("a review against a base lets the PR open when it names the local branch at that base, in any of gh's spellings", async () => {
   const repo = await twoCommitFeature();
   assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
-  for (const command of ["gh pr create --base main --fill", "gh pr create -B main --fill", "gh pr create --base=main --fill", `gh pr create -B ${git(repo.root, "rev-parse", "main")} --fill`]) {
+  for (const command of ["gh pr create --base main --fill", "gh pr create -B main --fill", "gh pr create --base=main --fill", "gh pr create -Bmain --fill"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
+});
+
+test("the PR's base is read as a branch, as gh reads it, so a tag of the same name at the reviewed base does not count", async () => {
+  const repo = await twoCommitFeature();
+  const first = git(repo.root, "rev-parse", "HEAD~1");
+  assert.equal(await pass(repo.root, "--base", first), Exit.ok);
+  git(repo.root, "-c", "tag.gpgSign=false", "tag", "main", first);
+  assert.equal(git(repo.root, "rev-parse", "main"), first);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --base main --fill")), /but the PR's base main is [0-9a-f]{8}, so the PR holds changes the review never read/);
+});
+
+test("a PR base with no local branch, or that is not a plain branch name, is refused, even when it names the reviewed commit", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  const main = git(repo.root, "rev-parse", "main");
+  for (const base of ["nosuch", main, "refs/heads/main"]) {
+    assert.match(refusal(await runHook(repo.root, `gh pr create --base ${base} --fill`)), new RegExp(`the PR's base ${base} has no local branch here.*Fetch or create the local branch`), base);
+  }
+  assert.match(refusal(await runHook(repo.root, "gh pr create --base main:x --fill")), /the PR's base main:x is not a plain branch name/);
 });
 
 test("a PR to a base other than the reviewed one is refused, and says how to fix it", async () => {
@@ -205,11 +224,10 @@ test("a PR to a base other than the reviewed one is refused, and says how to fix
   assert.match(reason, /\/coherence:review <base>.*--base/);
 });
 
-test("a PR that names no base, or a base that is not a commit, is refused when the review recorded one", async () => {
+test("a PR that names no base, or names it twice, is refused when the review recorded one", async () => {
   const repo = await twoCommitFeature();
   assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
   assert.match(refusal(await runHook(repo.root, "gh pr create --fill")), /the PR does not name its base.*--base/);
-  assert.match(refusal(await runHook(repo.root, "gh pr create --base nosuch --fill")), /the PR's base nosuch is not a commit here/);
   assert.match(refusal(await runHook(repo.root, "gh pr create --base main -B main --fill")), /base is named more than once/);
 });
 
