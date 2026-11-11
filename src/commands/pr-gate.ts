@@ -33,7 +33,8 @@ const ONE_COMMAND =
 
 /** gh pr create's options by short and long name, with the -R it inherits, as `gh pr create --help` lists them on gh 2.103.2. */
 const TAKES_VALUE = new Map([["a", "assignee"], ["B", "base"], ["b", "body"], ["F", "body-file"], ["H", "head"], ["l", "label"], ["m", "milestone"], ["p", "project"], ["r", "reviewer"], ["R", "repo"], ["T", "template"], ["t", "title"]]);
-const TAKES_VALUE_LONG = new Set([...TAKES_VALUE.values(), "attach", "recover"]);
+/** `--recover` is left out on purpose: it restores the inputs of a failed run from a file, which can name another head, so the gate refuses it. */
+const TAKES_VALUE_LONG = new Set([...TAKES_VALUE.values(), "attach"]);
 const SWITCHES = new Map([["d", "draft"], ["e", "editor"], ["f", "fill"], ["h", "help"], ["w", "web"]]);
 const SWITCHES_LONG = new Set([...SWITCHES.values(), "dry-run", "fill-first", "fill-verbose", "no-maintainer-edit"]);
 

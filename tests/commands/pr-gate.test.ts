@@ -346,6 +346,8 @@ test("a word coherence cannot read as an option is refused, since what follows i
     ["gh pr create stray --fill", "stray"],
     ["gh pr create -- --fill", "--"],
     ["gh pr create - --fill", "-"],
+    ["gh pr create --recover state.json", "--recover"],
+    ["gh pr create --recover=state.json", "--recover=state.json"],
   ]) {
     assert.match(refusal(await runHook(repo.root, command)), new RegExp(`cannot read ${unknown} as an option of gh pr create`), command);
   }
