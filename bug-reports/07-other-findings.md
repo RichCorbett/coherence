@@ -1,0 +1,46 @@
+# Other findings, ranked
+
+Severity is as adjudicated by the ACE-method pass. M = measured in the code, I = inferred.
+
+## Eval validity
+
+- **HIGH: eval answer leak.** `agents/readability-reviewer.md:23` and `rules/design.md:9` name `intake`, `intake-pass` and `ingest`, the exact files the `no-shape/found-overlapping-names` grader scores. A reviewer can pass by pattern-matching (M).
+- **MED:** the fixture `ARCHITECTURE.md` files state, word for word, the answers that `stated-the-idea` and `kept-the-good-shape` look for (M).
+- **MED:** no planted case has a precision grader, so "21 of 21" measures recall only. A report with 30 findings still passes (M).
+- **MED:** `evals/baseline.md:24-26` shows the results table mixes two reviewer configurations, and the judge and the reviewer are both Sonnet (M).
+- **MED:** `evals/taste-applied/scaffold.sh:10` overwrites the real `~/.config/coherence/taste-log.md`, and `taste-capture` appends to it. Set `XDG_CONFIG_HOME` per case (M; whether the eval runner isolates HOME is inferred).
+- **INFO:** nothing measures the headline claim, "reads like one person wrote it". The review skill, `check` and the gate have no eval coverage (M).
+
+## Taste
+
+- **MED:** taste is a global, unauthenticated way to send instructions to the reviewer ("Follow it, including one that tells you to stop flagging something"). Fable traced four ways to poison it (M/I).
+- **MED:** condensation drops dates and provenance, cannot be undone, and compounds earlier errors (M).
+- **MED:** `appendTaste` accepts newlines, so one `add` can create several entries or fake headings (M).
+- **LOW:** `condenseTaste` and `undoLastTaste` can lose updates when two agents write at once (M).
+
+## Gate, remaining
+
+- **MED:** a Bash-capable agent can forge `branch.<b>.coherence-reviewed` with `git config` (M).
+- **MED:** `--base` is not recorded, so a review against `main` also covers a PR to `production` (M).
+- **MED:** the gate compares the local branch tip while gh publishes the remote branch (I).
+- **MED:** in `shell-commands.ts`, the heredoc regex runs before quotes are parsed (`echo "<<EOF"` hides the next line), and `closingParen` ignores quotes (M).
+- **LOW:** false denies: `# then gh pr create`, `echo gh pr create`, `gh pr create --help` (M).
+- **LOW:** `gh api -X POST repos/o/r/pulls`, gh aliases and MCP tools bypass any Bash-text gate (I).
+
+## Checks and processes
+
+- **MED:** `runProcess` has no timeout, and a failed check does not cancel the others (M).
+- **MED:** `npx --yes madge@8.0.0 / jscpd@5.4.3` pins only the top-level version. Transitive dependencies and their install scripts are fetched per machine (M).
+- **MED:** one argument per file can hit ARG_MAX on big repos. This fails loudly, not as a false pass (M/I).
+- **MED:** in a folder that already has more than 15 files, touching one file makes the whole folder a must-fix for the branch (M).
+- **MED:** madge gets no `--ts-config`, so cycles through path aliases are missed (I).
+- **MED:** `sourceFiles()` uses `git ls-files`, so untracked files are never checked (M).
+- **LOW:** any folder named `build`, `dist`, `vendor` or `fixtures` anywhere in the tree is skipped (M).
+
+## Tests that cannot fail
+
+- `hostile-repo.test.ts`: the TMPDIR test cannot fail. The code uses `~/.cache`, and the planted bins are named `madge@8.0.0`, which npx never looks up (M). The fsmonitor half would likely pass with the defense removed (I).
+
+## Docs
+
+- `ARCHITECTURE.md:8` lists a "missing architecture doc" check, which the code does not have (M).
