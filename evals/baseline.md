@@ -2,6 +2,8 @@
 
 ## Latest run: reviewer on Sonnet, 2026-11-09
 
+Not rerun since the reviewer lost Bash: its taste, rules and diff now arrive in its prompt, and the five reviewer cases ask the main session to paste taste and rules in. Treat the numbers below as the baseline to compare against.
+
 3 runs per case, $4.12, Claude Code 2.1.321, `coherence:readability-reviewer` on Sonnet at medium effort, Sonnet judges.
 
 | Case | Grader | Passed |

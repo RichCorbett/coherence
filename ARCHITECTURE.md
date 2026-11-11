@@ -40,9 +40,10 @@ answerable for according to each finding's scope, prints them, and exits `Exit.f
 ## One review, end to end
 
 `skills/review/SKILL.md` drives a review of a branch. It first runs `coherence check --base <ref>`; each finding is
-must-fix, so the reader spends no attention on what a rule can catch. Then the `readability-reviewer` subagent, which
-runs on Sonnet, runs `coherence taste` and `coherence rules` (the latter prints `rules/design.md` through
-`readPluginFile`) and reads the code as a newcomer would. The skill reports its verdict and findings, then runs
+must-fix, so the reader spends no attention on what a rule can catch. Then the skill runs `coherence review-input`, which resolves the base ref to a commit ID without a shell and prints the taste, the rules (`rules/design.md`
+through `readPluginFile`) and the branch diff, and pastes that into the prompt of the `readability-reviewer` subagent. The subagent
+runs on Sonnet with only Read, Glob and Grep, so repo text it reads cannot make it run anything, though it can still Read any file on disk (agent files cannot limit paths). It reads the code as a
+newcomer would. The skill reports its verdict and findings, then runs
 `coherence pr-gate pass`, which stores the HEAD commit for the branch in git config. The `pr-gate` hook runs before
 `gh pr create` and compares HEAD with that stored commit. If the branch has no stored commit, or HEAD has moved on, it
 refuses and says whether the branch was never reviewed or commits landed after the review. When the owner accepts or
