@@ -3,12 +3,48 @@ import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
 
-/** The words after `gh pr create`, or undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
-function prCreateArgs(commandLine: string): string[] | undefined {
-  for (const words of shellCommands(commandLine)) {
+type PrCreate = { words: string[]; gh: string[]; args: string[] };
+
+/** The command on a parsed line that opens a PR: all its words, the words after `gh`, and those after `gh pr create`. Undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
+function prCreate(line: string[][]): PrCreate | undefined {
+  for (const words of line) {
     const gh = words.findIndex((word) => basename(word) === "gh");
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
-    if (pr !== -1 && words[pr + 1] === "create") return words.slice(pr + 2);
+    if (pr !== -1 && words[pr + 1] === "create") return { words, gh: words.slice(gh + 1), args: words.slice(pr + 2) };
+  }
+  return undefined;
+}
+
+const CHANGES_FOLDER = new Set(["cd", "pushd", "popd"]);
+const MOVES_HEAD = new Set(["commit", "merge", "rebase", "reset", "pull", "cherry-pick", "am", "revert", "stash", "switch", "checkout", "restore", "worktree", "fetch"]);
+const ON_ITS_OWN = "Run gh pr create on its own, from the repo's folder";
+
+/** Whether `word` is a group of short options, such as `-H`, `-Hvalue` or `-dH`, that contains `letter`. */
+function shortOption(word: string, letter: string): boolean {
+  return /^-[A-Za-z]/.test(word) && word.includes(letter);
+}
+
+function namesHead(word: string): boolean {
+  return word === "--head" || word.startsWith("--head=") || shortOption(word, "H");
+}
+
+/** Why the gate cannot judge this line, or undefined when it can. The hook runs before the whole line, so anything else on it that moves HEAD, changes folder or points gh elsewhere would make the gate judge the wrong commit. */
+function unjudgeable(line: string[][], pr: PrCreate): string | undefined {
+  for (const words of line) {
+    if (words === pr.words) continue;
+    const folder = words.find((word) => CHANGES_FOLDER.has(word));
+    if (folder) return `the same line runs ${folder}, so gh may run in a folder the gate did not check. ${ON_ITS_OWN}`;
+    const git = words.findIndex((word) => basename(word) === "git");
+    const moves = git === -1 ? undefined : words.slice(git + 1).find((word) => MOVES_HEAD.has(word));
+    if (moves) return `the same line runs git ${moves}, which can move the branch after the gate checks it. ${ON_ITS_OWN}`;
+  }
+  const retarget =
+    line.flat().find((word) => /^GH_(REPO|HOST)=/.test(word)) ??
+    pr.gh.find((word) => word === "--repo" || word.startsWith("--repo=") || shortOption(word, "R"));
+  if (retarget) return `${retarget} points gh at a repository the gate did not check. ${ON_ITS_OWN}`;
+  const heads = pr.args.filter(namesHead);
+  if (heads.length > 1 || heads.some((word) => shortOption(word, "H") && !word.startsWith("-H"))) {
+    return "the PR's head is named more than once or inside a group of short options. Name it once, with --head <branch>";
   }
   return undefined;
 }
@@ -24,9 +60,14 @@ function hookInput(stdin: string): { command: string; cwd?: string } | undefined
   }
 }
 
+/** The branch the PR names as its head, read the way gh reads it: `--head x`, `--head=x`, `-H x`, `-Hx` or `-H=x`. */
 function headBranch(args: string[]): string | undefined {
-  const named = args.findIndex((word) => word === "--head" || word === "-H");
-  return named !== -1 ? args[named + 1] : args.find((word) => word.startsWith("--head="))?.slice("--head=".length);
+  for (const [at, word] of args.entries()) {
+    if (word === "--head" || word === "-H") return args[at + 1];
+    if (word.startsWith("--head=")) return word.slice("--head=".length);
+    if (word.startsWith("-H")) return word.slice(word.startsWith("-H=") && word.length > 3 ? 3 : 2);
+  }
+  return undefined;
 }
 
 const UNREADABLE_HOOK =
@@ -43,17 +84,21 @@ export class PrGateCommand extends BaseCommand {
     if (verb === "pass") return this.pass(invocation);
     if (verb !== undefined) return this.refuse(invocation);
 
-    const hook = hookInput(await invocation.readStdin());
+    // Stdin that cannot be read is input the gate cannot read, so it is refused the same way.
+    const hook = hookInput(await invocation.readStdin().catch(() => ""));
     // Claude Code always sends this, so input without it means the hook protocol changed; guessing at it would let PRs through.
     if (!hook) {
       this.deny(invocation, UNREADABLE_HOOK);
       return Exit.ok;
     }
-    const args = prCreateArgs(hook.command);
-    if (!args) return Exit.ok;
+    const line = shellCommands(hook.command);
+    const pr = prCreate(line);
+    if (!pr) return Exit.ok;
+    const why = unjudgeable(line, pr);
+    if (why) return this.cannotCheck(invocation, why);
 
     // Once a PR is being opened, anything that stops the gate judging it refuses the PR instead of letting it through.
-    return this.judge(invocation, hook.cwd ?? invocation.cwd, args).catch((error: unknown) =>
+    return this.judge(invocation, hook.cwd ?? invocation.cwd, pr.args).catch((error: unknown) =>
       this.cannotCheck(invocation, error instanceof Error ? error.message : String(error)),
     );
   }

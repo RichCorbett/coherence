@@ -204,6 +204,89 @@ test("a PR for a named branch is refused when that branch moved after its review
   assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /commits landed on branch integration after its coherence review/);
 });
 
+async function reviewedRepo() {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  await pass(repo.root);
+  return repo;
+}
+
+test("on a reviewed branch, a PR opened on its own or after a command that leaves HEAD alone opens", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["gh pr create --fill", "git push && gh pr create --fill", "git status; gh pr create", "GH_TOKEN=abc gh pr create"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("a commit on the same line as the PR is refused even on a reviewed branch, since the gate checks before it runs", async () => {
+  const repo = await reviewedRepo();
+  const reason = refusal(await runHook(repo.root, "git add -A && git commit -m x && git push && gh pr create --fill"));
+  assert.match(reason, /runs git commit, which can move the branch/);
+  assert.match(reason, /Run gh pr create on its own, from the repo's folder/);
+});
+
+test("any git command that can move HEAD on the same line as the PR is refused", async () => {
+  const repo = await reviewedRepo();
+  for (const sub of ["merge", "rebase", "reset", "pull", "cherry-pick", "am", "revert", "stash", "switch", "checkout", "restore", "worktree", "fetch"]) {
+    assert.match(refusal(await runHook(repo.root, `git -C . ${sub} x; gh pr create`)), new RegExp(`runs git ${sub},`), sub);
+  }
+});
+
+test("a folder change on the same line as the PR is refused, since gh would run somewhere the gate did not check", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["cd ../other && gh pr create", "pushd ../other; gh pr create", "popd && gh pr create", "(cd ../other && gh pr create)"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /runs (cd|pushd|popd), so gh may run in a folder the gate did not check/, command);
+  }
+});
+
+test("a PR pointed at another repository is refused", async () => {
+  const repo = await reviewedRepo();
+  for (const command of [
+    "gh pr create -R o/r",
+    "gh -R o/r pr create",
+    "gh pr create -Ro/r",
+    "gh pr create --repo o/r",
+    "gh pr create --repo=o/r",
+    "GH_REPO=o/r gh pr create",
+    "GH_HOST=example.com gh pr create",
+    "env GH_REPO=o/r gh pr create",
+    "export GH_REPO=o/r; gh pr create",
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), /points gh at a repository the gate did not check/, command);
+  }
+});
+
+test("a head attached to -H is read the way gh reads it", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "integration");
+  await pass(repo.root);
+  git(repo.root, "checkout", "-q", "main");
+  git(repo.root, "branch", "unreviewed");
+  for (const command of ["gh pr create -Hintegration --fill", "gh pr create -H=integration --fill"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+  assert.match(refusal(await runHook(repo.root, "gh pr create -Hunreviewed")), /branch unreviewed has not had a coherence review/);
+});
+
+test("a head named more than once, or inside a group of short options, is refused as ambiguous", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "integration");
+  await pass(repo.root);
+  git(repo.root, "branch", "unreviewed");
+  for (const command of ["gh pr create --head integration --head unreviewed", "gh pr create -H integration --head=unreviewed", "gh pr create -dH unreviewed"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /head is named more than once or inside a group of short options/, command);
+  }
+});
+
+test("hook input that cannot be read from stdin at all is refused as unreadable", async () => {
+  const invocation = fakeInvocation(tempFolder());
+  invocation.readStdin = async () => {
+    throw new Error("EPIPE");
+  };
+  assert.equal(await new PrGateCommand().execute(invocation), Exit.ok);
+  assert.match(refusal(invocation.printed), /^coherence pr-gate could not read the hook input/);
+});
+
 test("a PR for a named branch that has no local commit here is refused, and says to check out or fetch it", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   for (const head of ["someone:their-branch", "not-fetched"]) {
