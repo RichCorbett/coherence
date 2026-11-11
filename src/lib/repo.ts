@@ -22,6 +22,9 @@ export function isUsableRef(ref: string): boolean {
   return !ref.startsWith("-") && SAFE_REF.test(ref);
 }
 
+/** The recorded base of a review that read the whole repo, not a diff from a base. It cannot be a commit ID. */
+export const WHOLE_REPO = "all";
+
 /** A full commit ID, never an abbreviation that could come to name a different commit. */
 export const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
@@ -111,17 +114,20 @@ export class Repo {
     return COMMIT_SHA.test(stored) ? stored : undefined;
   }
 
-  /** The commit the branch's recorded review was made against, or undefined for a review of the whole repo. */
-  async reviewedBase(branch: string): Promise<string | undefined> {
+  /**
+   * What the branch's recorded review was made against: a commit ID, WHOLE_REPO, or undefined when the base is missing or not
+   * one of those. Missing includes approvals left by earlier versions, which wrote only the head and so cannot say what they covered.
+   */
+  async reviewedBase(branch: string): Promise<string | typeof WHOLE_REPO | undefined> {
     const stored = (await git(["config", "--get", reviewedBaseKey(branch)], this.root)).stdout.trim();
-    return COMMIT_SHA.test(stored) ? stored : undefined;
+    return stored === WHOLE_REPO || COMMIT_SHA.test(stored) ? stored : undefined;
   }
 
-  /** Records that commit `headId` was reviewed, and the base it was reviewed against, as one review. */
+  /** Records that commit `headId` was reviewed, and the base it was reviewed against, or the whole repo when there is none, as one review. */
   async markCommitReviewed(branch: string, headId: string, baseId?: string): Promise<void> {
     // The head is what the gate honours, so the old one goes first and the new one is written last: any failure leaves no approval.
     await this.revokeReview(branch);
-    if (baseId) await this.setConfig(["config", reviewedBaseKey(branch), baseId]);
+    await this.setConfig(["config", reviewedBaseKey(branch), baseId ?? WHOLE_REPO]);
     await this.setConfig(["config", reviewedKey(branch), headId]);
   }
 

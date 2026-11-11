@@ -213,12 +213,26 @@ test("a PR that names no base, or a base that is not a commit, is refused when t
   assert.match(refusal(await runHook(repo.root, "gh pr create --base main -B main --fill")), /base is named more than once/);
 });
 
-test("a review of the whole repo records no base, so a PR to any base, or none, opens", async () => {
+test("a review of the whole repo records the base as all, so a PR to any base, or none, opens", async () => {
   const repo = await twoCommitFeature();
   assert.equal(await pass(repo.root), Exit.ok);
-  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), "all");
   for (const command of ["gh pr create --fill", "gh pr create --base main --fill", "gh pr create --base nosuch --fill"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("an approval with no recorded base, as earlier versions left it, or with a base that is not a commit, is refused", async () => {
+  const repo = await twoCommitFeature();
+  const head = git(repo.root, "rev-parse", "HEAD");
+  for (const base of [undefined, "", "main", "ALL", head.slice(0, 12)]) {
+    assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+    git(repo.root, "config", "--unset-all", "branch.feature.coherence-reviewed-base");
+    if (base !== undefined) git(repo.root, "config", "branch.feature.coherence-reviewed-base", base);
+    assert.equal(recorded(repo.root, "coherence-reviewed"), head, String(base));
+    for (const command of ["gh pr create --fill", "gh pr create --base main --fill"]) {
+      assert.match(refusal(await runHook(repo.root, command)), /records no base it was reviewed against\. Run \/coherence:review <base> again/, `${base} ${command}`);
+    }
   }
 });
 
@@ -443,7 +457,7 @@ test("pass with a base answers only for what the branch changed, as check --base
   assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
 });
 
-test("pass records the head and the base it was given, and a later pass without a base drops the old one", async () => {
+test("pass records the head and the base it was given, and a later pass without a base replaces it with the whole repo", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   const main = git(repo.root, "rev-parse", "main");
   git(repo.root, "checkout", "-q", "-b", "feature");
@@ -456,7 +470,7 @@ test("pass records the head and the base it was given, and a later pass without 
 
   assert.equal(await pass(repo.root), Exit.ok);
   assert.equal(recorded(repo.root, "coherence-reviewed"), head);
-  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), "all");
 });
 
 test("a PR for a named branch is judged by that branch, whichever branch this folder is on", async () => {
@@ -587,6 +601,14 @@ for (const name of ["GH_REPO", "GH_HOST"]) {
 test("a PR pointed at another repository is refused", async () => {
   const repo = await reviewedRepo();
   for (const command of ["gh pr create -R o/r", "gh pr create -Ro/r", "gh pr create -dR o/r", "gh pr create --repo o/r", "gh pr create --repo=o/r"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /--repo points gh at a repository the gate did not check/, command);
+  }
+});
+
+test("a PR to the reviewed base in another repository is refused, since the base is resolved only in this one", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  for (const command of ["gh pr create --repo other/project --base main --fill", "gh pr create -B main -R other/project --fill"]) {
     assert.match(refusal(await runHook(repo.root, command)), /--repo points gh at a repository the gate did not check/, command);
   }
 });
@@ -750,5 +772,5 @@ test("a pass clears every old base value, not only a single one", async () => {
   git(repo.root, "checkout", "-q", "-b", "feature");
   for (const value of ["one", "two"]) git(repo.root, "config", "--add", "branch.feature.coherence-reviewed-base", value);
   assert.equal(await pass(repo.root), Exit.ok);
-  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
+  assert.equal(git(repo.root, "config", "--get-all", "branch.feature.coherence-reviewed-base"), "all");
 });

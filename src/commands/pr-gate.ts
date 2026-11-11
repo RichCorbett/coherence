@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
-import { COMMIT_SHA, isUsableRef, Repo } from "../lib/repo.ts";
+import { COMMIT_SHA, isUsableRef, Repo, WHOLE_REPO } from "../lib/repo.ts";
 import { HEREDOC_TEXT, shellCommands, staticWords } from "../lib/shell-commands.ts";
 
 /** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
@@ -184,13 +184,18 @@ export class PrGateCommand extends BaseCommand {
   }
 
   /**
-   * Why the PR's base is not the one the review read, or undefined when it is. A review of the whole repo recorded no base and
-   * covers any. Otherwise the PR must name its base, and that base must be the reviewed one, or the PR would publish a diff
-   * the review never read.
+   * Why the PR's base is not the one the review read, or undefined when it is. A review of the whole repo covers any base. A
+   * review with no readable base, such as one recorded by an earlier version, cannot say what it covered, so it covers none.
+   * Otherwise the PR must name its base, and that base must be the reviewed one, or the PR would publish a diff the review never read.
+   *
+   * Comparing against the base on GitHub was considered, because the PR's diff is taken from GitHub's branch, not the local one.
+   * It was rejected because the hook would need network calls and credentials to make it, and the remote can still move
+   * between the check and the PR. The base is compared in the local clone; branch protection is the hard enforcement.
    */
   private async baseMismatch(repo: Repo, branch: string, args: string[]): Promise<string | undefined> {
     const reviewedBase = await repo.reviewedBase(branch);
-    if (!reviewedBase) return undefined;
+    if (reviewedBase === WHOLE_REPO) return undefined;
+    if (!reviewedBase) return `the coherence review of branch ${branch} records no base it was reviewed against. Run /coherence:review <base> again with the PR's base`;
     const short = reviewedBase.slice(0, 8);
     const again = `Run /coherence:review <base> against the PR's base, or open the PR with --base naming the reviewed base ${short}`;
     const named = options(args).found.filter(([name]) => name === "base");

@@ -25,7 +25,7 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 - **MED:** in `shell-commands.ts`, the heredoc regex runs before quotes are parsed (`echo "<<EOF"` hides the next line), and `closingParen` ignores quotes (M).
 - **LOW:** false denies: `# then gh pr create`, `echo gh pr create`, `gh pr create --help` (M).
 - **LOW:** `gh api -X POST repos/o/r/pulls`, gh aliases and MCP tools bypass any Bash-text gate (I).
-- **Fixed (07a):** the recorded base was never checked, so a review against `HEAD~1` or `main` also let a PR to any base open, and a too-recent `--base` from the caller shrank the reviewed change set (both left open by fix 04). The hook now requires a PR on a branch reviewed against a base to name `--base`, resolves it locally, and refuses when it is missing, is not a commit, or is not the reviewed base. A whole-repo review records no base and still allows any.
+- **Fixed (07a):** the recorded base was never checked, so a review against `HEAD~1` or `main` also let a PR to any base open, and a too-recent `--base` from the caller shrank the reviewed change set (both left open by fix 04). The hook now requires a PR on a branch reviewed against a base to name `--base`, resolves it locally, and refuses when it is missing, is not a commit, or is not the reviewed base. A whole-repo review records the base `all` and still allows any; an approval with no readable base, including a head-only one left by earlier versions, is refused. The base is compared in the local clone, not on GitHub; that gap is accepted and documented in the README.
 
 ## Left open by fix 04 (Dissent round 4, 2026-11-11)
 
