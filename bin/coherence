@@ -14,8 +14,13 @@ done
 # It asks node whether it can strip types rather than guessing from a version number.
 # Each probe gets $limit seconds, so a hung node or git cannot run the hook into its 30-second timeout,
 # which lets the command through. Two probes at 5 seconds still leave main.ts 20 of the 30.
-# COHERENCE_PROBE_SECONDS exists for the tests, which cannot wait 5 seconds per case.
-limit=${COHERENCE_PROBE_SECONDS:-5}
+# COHERENCE_PROBE_SECONDS exists for the tests, which cannot wait 5 seconds per case. It can only shorten
+# the limit: anything but a fraction of a second or a whole 1 to 5 is ignored, so it can never push the
+# probes past the hook's timeout or put arbitrary text into the hook's JSON.
+limit=5
+case "${COHERENCE_PROBE_SECONDS:-}" in
+  [1-5] | 0.[0-9] | 0.[0-9][0-9]) limit=$COHERENCE_PROBE_SECONDS ;;
+esac
 
 # Runs "$@" with no input or output and returns its exit status, or 137 if it was killed after $limit seconds.
 # Probes read /dev/null, so the hook's JSON on stdin reaches main.ts untouched, and the watchdog's

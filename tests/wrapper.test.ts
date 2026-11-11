@@ -9,7 +9,7 @@ import { tempFolder } from "./helpers/sandbox.ts";
 const WRAPPER = resolve(import.meta.dirname, "../bin/coherence");
 
 /** How long the tests let a probe run, instead of the wrapper's 5 seconds. */
-const PROBE_SECONDS = 0.5;
+const PROBE_SECONDS = 0.2;
 
 /** Where `tool` lives on the PATH these tests run with. */
 function found(tool: string): string {
@@ -94,6 +94,15 @@ test("a hung probe is cut off after its limit, not left to run into the hook's 3
   const started = Date.now();
   assertRefused(hook(pathWith({ node: "hangs", git: "real" }), "gh pr list"), /did not answer/, "gh pr list");
   assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
+});
+
+test("the probe limit can only be shortened: a longer or malformed override falls back to 5 seconds and keeps the hook's JSON valid", () => {
+  const env = { PATH: pathWith({ node: "hangs", git: "real" }), HOME: tempFolder(), COHERENCE_PROBE_SECONDS: '60"}' };
+  const input = JSON.stringify({ cwd: "/", tool_name: "Bash", tool_input: { command: "gh pr list" } });
+  const started = Date.now();
+  const result = spawnSync(WRAPPER, ["pr-gate"], { env, input, encoding: "utf8" });
+  assertRefused({ code: result.status, out: result.stdout }, /node did not answer within 5 seconds/, "gh pr list");
+  assert.ok(Date.now() - started < 8000, `took ${Date.now() - started} ms`);
 });
 
 for (const [grep, how] of [["absent", "is absent"], ["fails", "fails"]] as const) {
