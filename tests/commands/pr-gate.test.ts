@@ -118,14 +118,14 @@ test("a PR opened through a wrapper, a path, a nested shell or a substitution is
 test("a PR whose pr or create word is an expansion is refused, and ordinary commands stay allowed", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  for (const command of ["gh pr $'create' --fill", "gh $(echo pr) create --fill", `gh "$P" create`, "gh pr ${C}", "gh -R o/r $(printf pr) create --fill", `gh --repo o/r "$P" create`, "gh pr -R o/r $(printf create) --fill"]) {
+  for (const command of ["gh pr $'create' --fill", "gh $(echo pr) create --fill", `gh "$P" create`, "gh pr ${C}", "gh -R o/r $(printf pr) create --fill", `gh --repo o/r "$P" create`, "gh pr -R o/r $(printf create) --fill", "env gh pr $'create'", "command gh $(echo pr) create", `time gh "$P" create`, "sudo -u x gh pr ${C}"]) {
     assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
   }
   for (const command of [`git commit -m "fix typo"`, "npm test", "git log --oneline", "gh pr view 3", "gh pr list"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
   // Expansions are everyday arguments; they matter only in a gh command whose subcommand is not fixed.
-  for (const command of ["ls *.ts *.md", "cp $SRC $DST", "echo $A $B", "git diff $BASE $HEAD", `for f in $FILES; do echo "$f"; done`, "gh pr view $(git branch --show-current)", "gh api repos/o/r/pulls/1", `printf '%s %s' gh "$HOME"`, `echo gh "$HOME"`, `gh repo clone pr "$DEST"`, "gh api repos/o/r/pulls/$N", "gh pr list $X", "gh issue list"]) {
+  for (const command of ["ls *.ts *.md", "cp $SRC $DST", "echo $A $B", "git diff $BASE $HEAD", `for f in $FILES; do echo "$f"; done`, "gh pr view $(git branch --show-current)", "gh api repos/o/r/pulls/1", `printf '%s %s' gh "$HOME"`, `echo gh "$HOME"`, `gh repo clone pr "$DEST"`, "gh api repos/o/r/pulls/$N", "gh pr list $X", "gh issue list", "env FOO=1 npm test", "time npm test", "command -v gh", "nohup ls *.ts"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
 });
