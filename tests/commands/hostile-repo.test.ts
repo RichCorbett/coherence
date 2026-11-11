@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { CyclesCheck } from "../../src/checks/cycles.ts";
+import { DuplicatesCheck } from "../../src/checks/duplicates.ts";
 import { CheckCommand } from "../../src/commands/check.ts";
 import { Exit } from "../../src/lib/base-command.ts";
 import { PrGateCommand } from "../../src/commands/pr-gate.ts";
-import { setEnv, tempFolder } from "../helpers/sandbox.ts";
+import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
 /**
@@ -74,21 +76,33 @@ test("a nested repository planted in the folder the review starts from cannot ma
   assert.equal(existsSync(ran), false);
 });
 
-test("a tool planted above the shared temp folder is never run", async (t) => {
+test("tools and tool config planted in the repo or above the temp folder are never used", async (t) => {
+  const A_IMPORTS_B = 'import { b } from "./b.ts";\nexport const a = b;\n';
+  const B_IMPORTS_A = 'import { a } from "./a.ts";\nexport const b = a;\n';
+  const BLOCK = Array.from({ length: 40 }, (_, i) => `export function f${i}(a: number) { const total = a * ${i}; return total > 10 ? total : a; }`).join("\n");
+  const repo = await tempRepo({ "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": B_IMPORTS_A, "src/y/one.ts": `${BLOCK}\n`, "src/y/two.ts": `${BLOCK}\n` });
   const sharedTemp = tempFolder();
-  const planted = join(sharedTemp, "node_modules/.bin");
-  mkdirSync(planted, { recursive: true });
   const ran = join(sharedTemp, "RAN");
-  // Named for the exact argument coherence passes: npx puts every ancestor's node_modules/.bin on PATH and runs `madge@8.0.0` from there.
-  for (const name of ["madge@8.0.0", "jscpd@5.4.3"]) {
-    writeFileSync(join(planted, name), `#!/bin/sh\n${touchCommand(ran)}\necho '{}'\n`);
-    chmodSync(join(planted, name), 0o755);
+  const fake = `#!/bin/sh\n${touchCommand(ran)}\necho '[]'\n`;
+  for (const root of [repo.root, sharedTemp]) {
+    // Where a PATH lookup or a package lookup from the repo or the temp folder would find a tool.
+    for (const path of ["node_modules/.bin/madge", "node_modules/.bin/jscpd", "node_modules/madge/bin/cli.js", "node_modules/jscpd/run-jscpd.js"]) {
+      writeFiles(root, { [path]: fake });
+      chmodSync(join(root, path), 0o755);
+    }
+    // Config each tool reads from its working folder, set to hide everything it would find.
+    writeFiles(root, { ".madgerc": '{ "excludeRegExp": [".*"] }\n', ".jscpd.json": '{ "minLines": 1000 }\n' });
   }
-  const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n" });
   setEnv(t, { TMPDIR: sharedTemp });
+  const before = process.cwd();
+  process.chdir(repo.root);
+  t.after(() => process.chdir(before));
 
-  // A planted tool's output can make the check fail, and all that matters here is whether it ran.
-  await new CheckCommand().execute(fakeInvocation(repo.root)).catch(() => undefined);
+  const cycles = await new CyclesCheck().run(repo);
+  const duplicates = await new DuplicatesCheck().run(repo);
 
+  // Finding the real cycle and clone shows the real tools ran, with their own defaults.
+  assert.deepEqual(cycles.map((finding) => finding.path).sort(), ["src/x/a.ts", "src/x/b.ts"]);
+  assert.deepEqual(duplicates.map((finding) => finding.path).sort(), ["src/y/one.ts", "src/y/two.ts"]);
   assert.equal(existsSync(ran), false);
 });

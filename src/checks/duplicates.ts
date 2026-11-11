@@ -8,7 +8,8 @@ type Side = { name: string; start: number; end: number };
 type Clone = { firstFile: Side; secondFile: Side };
 
 // --absolute because jscpd's relative names depend on its own idea of the working folder.
-const JSCPD = ["jscpd@5.4.3", "--reporters", "json", "--silent", "--absolute"];
+const JSCPD = "jscpd/run-jscpd.js";
+const JSCPD_ARGS = ["--reporters", "json", "--silent", "--absolute"];
 
 export class DuplicatesCheck extends BaseCheck {
   readonly name = "duplicates";
@@ -27,7 +28,7 @@ export class DuplicatesCheck extends BaseCheck {
 
   private async findClones(repo: Repo, files: string[]): Promise<Clone[]> {
     return withTempFolder(async (output) => {
-      const result = await runPinnedTool([...JSCPD, "--output", output, ...files.map((path) => repo.absolutePath(path))]);
+      const result = await runPinnedTool(JSCPD, [...JSCPD_ARGS, "--output", output, ...files.map((path) => repo.absolutePath(path))]);
       if (result.code !== 0) throw new Error(`jscpd failed: ${result.stderr.trim() || result.stdout.trim()}`);
       return JSON.parse(await readFile(join(output, "jscpd-report.json"), "utf8")).duplicates;
     });

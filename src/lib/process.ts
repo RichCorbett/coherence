@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type ProcessResult = { code: number; stdout: string; stderr: string };
 
-// Large repos make git and the npx tools print a lot; the default buffer would kill them mid-run.
+// Large repos make git and the external tools print a lot; the default buffer would kill them mid-run.
 export const MAX_OUTPUT_MB = 64;
 const MAX_OUTPUT_BYTES = MAX_OUTPUT_MB * 1024 * 1024;
 
@@ -21,13 +23,52 @@ export function runProcess(command: string, args: string[], cwd: string): Promis
   });
 }
 
+// The plugin's own tools/package.json and package-lock.json, which pin madge, jscpd and everything they depend on.
+const TOOLS_MANIFEST = join(import.meta.dirname, "../../tools");
+let installing: Promise<string> | undefined;
+
 /**
- * Runs a pinned npm tool, fetched through npx because an installed plugin has no npm install step.
- * It runs from an empty folder because npx prefers a matching package in its working folder and obeys the .npmrc there,
- * and the repo under review must not be able to supply either.
+ * Runs `script`, a path inside the tools' node_modules such as `madge/bin/cli.js`, with the node running coherence.
+ * The tools are installed on first use, because an installed plugin has no npm install step.
+ * It runs from an empty folder because the tools read config files such as .madgerc and .jscpd.json from their working folder,
+ * and the repo under review must not be able to supply them.
  */
-export async function runPinnedTool(args: string[]): Promise<ProcessResult> {
-  return withTempFolder((folder) => runProcess("npx", ["--yes", ...args], folder));
+export async function runPinnedTool(script: string, args: string[]): Promise<ProcessResult> {
+  installing ??= installTools().catch((error) => {
+    installing = undefined;
+    throw error;
+  });
+  const tools = await installing;
+  return withTempFolder((folder) => runProcess(process.execPath, [join(tools, "node_modules", script), ...args], folder));
+}
+
+/**
+ * Installs the tools from `manifest`'s lockfile into a cache folder named for its hash, once per lockfile, and returns that folder.
+ * `npm ci --ignore-scripts` installs exactly what the lockfile pins and runs no package's install script.
+ * Concurrent first runs each install into their own temp folder and rename it into place, so the folder exists only once
+ * an install has completed; a run that loses the rename uses the winner's folder and removes its own.
+ */
+export async function installTools(manifest = TOOLS_MANIFEST): Promise<string> {
+  const lockfile = await readFile(join(manifest, "package-lock.json"));
+  const name = `tools-${createHash("sha256").update(lockfile).digest("hex").slice(0, 16)}`;
+  const tools = join(cacheParent(), name);
+  if (existsSync(tools)) return tools;
+
+  // A sibling of the final folder, so the rename stays on one file system and is atomic.
+  const staging = await makeCacheFolder(`${name}-installing-`);
+  try {
+    for (const file of ["package.json", "package-lock.json"]) await copyFile(join(manifest, file), join(staging, file));
+    // npm takes the folder holding package.json as the project, so the .npmrc it reads is never one from the repo under review.
+    const result = await runProcess("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], staging);
+    if (result.code !== 0) throw new Error(`installing madge and jscpd failed: ${result.stderr.trim() || result.stdout.trim()}`);
+    await rename(staging, tools).catch((error) => {
+      // macOS reports ENOTEMPTY and Linux EEXIST when another run's install is already in place.
+      if (!["ENOTEMPTY", "EEXIST"].includes(error.code) || !existsSync(tools)) throw error;
+    });
+    return tools;
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
 }
 
 /** A new private folder in coherence's own cache area, for the caller to remove. */
@@ -38,7 +79,8 @@ export async function makeCacheFolder(prefix: string): Promise<string> {
 }
 
 function cacheParent(): string {
-  // Not under the system temp folder: npx also searches every parent of its working folder, and other users can write to /tmp.
+  // Not under the system temp folder, which other users can write to: the installed tools run from here,
+  // and a tool resolves its packages through every parent of its own folder.
   return join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "coherence");
 }
 

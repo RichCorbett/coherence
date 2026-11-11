@@ -46,7 +46,7 @@ Taste is text the reviewer, and anything that writes code, reads before working.
 
 ## Install
 
-Needs Node 26 or newer, because the TypeScript runs directly with no build step. The checks fetch madge and jscpd through `npx`, so the plugin has no install step of its own. Only their top-level versions are pinned; their dependencies are whatever npm resolves when it runs.
+Needs Node 26 or newer, because the TypeScript runs directly with no build step. The plugin has no install step of its own: on first use the checks install madge and jscpd, and every package they depend on, from the plugin's lockfile in `tools/` with `npm ci --ignore-scripts`, into `~/.cache/coherence` (or `$XDG_CACHE_HOME/coherence`). That needs `npm` and the npm registry once; later runs reuse the install until the lockfile changes.
 
 ```sh
 claude plugin marketplace add grreardon/coherence
