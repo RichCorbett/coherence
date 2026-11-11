@@ -17,3 +17,4 @@ All claims come from reading the code. None were reproduced by running it. "Meas
 | [05-reviewer-has-bash.md](05-reviewer-has-bash.md) | HIGH | The reviewer reads untrusted repos with unrestricted Bash |
 | [06-hook-filter-too-literal.md](06-hook-filter-too-literal.md) | HIGH | The hook's `*gh pr create*` filter misses equivalent commands |
 | [07-other-findings.md](07-other-findings.md) | MED and LOW | Everything else, ranked |
+| [08-feature-trusted-repos-for-config-executing-tools.md](08-feature-trusted-repos-for-config-executing-tools.md) | Feature | Run knip and other config-executing tools only on owner-trusted repos |
