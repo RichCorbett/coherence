@@ -167,7 +167,12 @@ export class PrGateCommand extends BaseCommand {
     if (!tip) return this.cannotCheck(invocation, `branch ${branch} has no local commit here. Check out or fetch the branch, then open the PR again`);
 
     const reviewed = await repo.reviewedCommit(branch);
-    if (reviewed === tip) return Exit.ok;
+    if (reviewed === tip) {
+      const why = await this.baseMismatch(repo, branch, args);
+      if (!why) return Exit.ok;
+      this.deny(invocation, `PR refused by coherence: ${why}. Skipping review is the owner's decision, not yours.`);
+      return Exit.ok;
+    }
 
     const why = reviewed ? `commits landed on branch ${branch} after its coherence review` : `branch ${branch} has not had a coherence review`;
     this.deny(
@@ -176,6 +181,26 @@ export class PrGateCommand extends BaseCommand {
         `then open the PR again. Skipping review is the owner's decision, not yours.`,
     );
     return Exit.ok;
+  }
+
+  /**
+   * Why the PR's base is not the one the review read, or undefined when it is. A review of the whole repo recorded no base and
+   * covers any. Otherwise the PR must name its base, and that base must be the reviewed one, or the PR would publish a diff
+   * the review never read.
+   */
+  private async baseMismatch(repo: Repo, branch: string, args: string[]): Promise<string | undefined> {
+    const reviewedBase = await repo.reviewedBase(branch);
+    if (!reviewedBase) return undefined;
+    const short = reviewedBase.slice(0, 8);
+    const again = `Run /coherence:review <base> against the PR's base, or open the PR with --base naming the reviewed base ${short}`;
+    const named = options(args).found.filter(([name]) => name === "base");
+    if (named.length === 0) return `branch ${branch} was reviewed against ${short}, and the PR does not name its base. ${again}`;
+    if (named.length > 1) return "the PR's base is named more than once. Name it once, with --base <branch>";
+    const base = named[0][1] ?? "";
+    const baseId = await repo.resolveCommit(base).catch(() => undefined);
+    if (!baseId) return `the PR's base ${base.slice(0, 80)} is not a commit here, so the gate cannot tell whether the review read this diff. ${again}`;
+    if (baseId !== reviewedBase) return `branch ${branch} was reviewed against ${short}, but the PR's base ${base} is ${baseId.slice(0, 8)}, so the PR holds changes the review never read. ${again}`;
+    return undefined;
   }
 
   /**

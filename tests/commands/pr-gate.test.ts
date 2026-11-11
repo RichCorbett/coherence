@@ -180,6 +180,48 @@ test("a branch-wide mark from an earlier version counts as not reviewed", async 
   assert.match(JSON.parse(output).hookSpecificOutput.permissionDecisionReason, /has not had a coherence review/);
 });
 
+/** A feature branch two commits past main, so main and HEAD~1 are different bases. */
+async function twoCommitFeature() {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "first");
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "second");
+  return repo;
+}
+
+test("a review against a base lets the PR open only when it names that base, by any name", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  for (const command of ["gh pr create --base main --fill", "gh pr create -B main --fill", "gh pr create --base=main --fill", `gh pr create -B ${git(repo.root, "rev-parse", "main")} --fill`]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("a PR to a base other than the reviewed one is refused, and says how to fix it", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", git(repo.root, "rev-parse", "HEAD~1")), Exit.ok);
+  const reason = refusal(await runHook(repo.root, "gh pr create --base main --fill"));
+  assert.match(reason, /was reviewed against [0-9a-f]{8}, but the PR's base main is [0-9a-f]{8}/);
+  assert.match(reason, /\/coherence:review <base>.*--base/);
+});
+
+test("a PR that names no base, or a base that is not a commit, is refused when the review recorded one", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root, "--base", "main"), Exit.ok);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --fill")), /the PR does not name its base.*--base/);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --base nosuch --fill")), /the PR's base nosuch is not a commit here/);
+  assert.match(refusal(await runHook(repo.root, "gh pr create --base main -B main --fill")), /base is named more than once/);
+});
+
+test("a review of the whole repo records no base, so a PR to any base, or none, opens", async () => {
+  const repo = await twoCommitFeature();
+  assert.equal(await pass(repo.root), Exit.ok);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
+  for (const command of ["gh pr create --fill", "gh pr create --base main --fill", "gh pr create --base nosuch --fill"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
 function refusal(printed: string[]): string {
   assert.equal(printed.length, 1);
   const decision = JSON.parse(printed[0]).hookSpecificOutput;

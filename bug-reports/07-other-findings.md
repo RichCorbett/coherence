@@ -21,16 +21,15 @@ Severity is as adjudicated by the ACE-method pass. M = measured in the code, I =
 ## Gate, remaining
 
 - **MED:** a Bash-capable agent can forge `branch.<b>.coherence-reviewed` with `git config` (M).
-- **MED:** `--base` is not recorded, so a review against `main` also covers a PR to `production` (M).
 - **MED:** the gate compares the local branch tip while gh publishes the remote branch (I).
 - **MED:** in `shell-commands.ts`, the heredoc regex runs before quotes are parsed (`echo "<<EOF"` hides the next line), and `closingParen` ignores quotes (M).
 - **LOW:** false denies: `# then gh pr create`, `echo gh pr create`, `gh pr create --help` (M).
 - **LOW:** `gh api -X POST repos/o/r/pulls`, gh aliases and MCP tools bypass any Bash-text gate (I).
+- **Fixed (07a):** the recorded base was never checked, so a review against `HEAD~1` or `main` also let a PR to any base open, and a too-recent `--base` from the caller shrank the reviewed change set (both left open by fix 04). The hook now requires a PR on a branch reviewed against a base to name `--base`, resolves it locally, and refuses when it is missing, is not a commit, or is not the reviewed base. A whole-repo review records no base and still allows any.
 
 ## Left open by fix 04 (Dissent round 4, 2026-11-11)
 
 - **HIGH (accepted):** two `pass` calls on one branch can interleave, so a merge that started first can re-record an approval after a later `fix first` revoked it. Needs a branch lock or a review token from `review-input` (M).
-- **HIGH (accepted):** `--base` is chosen by the caller. A base that is a descendant of HEAD, or any too-recent base, shrinks the reviewed change set. The real fix is checking the recorded base at PR time, listed above (M).
 - **MED:** `--branch` uses the narrow `SAFE_REF`, so valid branch names with `+` or `@` can never be approved. This fails closed, but an approval left by older code on such a branch could not be revoked (M).
 - **MED:** `git status --porcelain` follows `status.showUntrackedFiles=no`, which would hide untracked files from the clean-tree check. Pass `--untracked-files=all` (M).
 - **MED:** a `--base` that no longer resolves throws instead of returning a `pass refused` reason. It still exits non-zero and records nothing (M).

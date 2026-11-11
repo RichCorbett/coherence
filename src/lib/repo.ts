@@ -111,6 +111,12 @@ export class Repo {
     return COMMIT_SHA.test(stored) ? stored : undefined;
   }
 
+  /** The commit the branch's recorded review was made against, or undefined for a review of the whole repo. */
+  async reviewedBase(branch: string): Promise<string | undefined> {
+    const stored = (await git(["config", "--get", reviewedBaseKey(branch)], this.root)).stdout.trim();
+    return COMMIT_SHA.test(stored) ? stored : undefined;
+  }
+
   /** Records that commit `headId` was reviewed, and the base it was reviewed against, as one review. */
   async markCommitReviewed(branch: string, headId: string, baseId?: string): Promise<void> {
     // The head is what the gate honours, so the old one goes first and the new one is written last: any failure leaves no approval.
