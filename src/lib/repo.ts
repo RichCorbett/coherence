@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import { type ProcessResult, runProcess } from "./process.ts";
+import { MAX_OUTPUT_MB, type ProcessResult, runProcess } from "./process.ts";
 
 const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|c|h|cc|cpp|swift)$/;
 
@@ -59,14 +59,14 @@ export class Repo {
     return result.stdout.trim();
   }
 
-  /** The full patch from `baseId` to HEAD, deleted files included. Never runs a diff or textconv command named by the repo. */
-  patchSince(baseId: string): Promise<string> {
-    return this.diffSince(baseId, []);
+  /** The full patch between two commit IDs, deleted files included. Never runs a diff or textconv command named by the repo. */
+  patchBetween(baseId: string, headId: string): Promise<string> {
+    return this.diffBetween(baseId, headId, []);
   }
 
   /** The `--stat` summary of the same change. */
-  statSince(baseId: string): Promise<string> {
-    return this.diffSince(baseId, ["--stat"]);
+  statBetween(baseId: string, headId: string): Promise<string> {
+    return this.diffBetween(baseId, headId, ["--stat"]);
   }
 
   /** A repo path usable from any working folder. Being absolute, it also cannot be read as an option. */
@@ -108,8 +108,13 @@ export class Repo {
     return access(this.absolutePath(path)).then(() => true, () => false);
   }
 
-  private async diffSince(baseId: string, extra: string[]): Promise<string> {
-    const result = await git(["diff", "--no-ext-diff", "--no-textconv", "--no-color", ...extra, `${baseId}...HEAD`, "--"], this.root);
+  private async diffBetween(baseId: string, headId: string, extra: string[]): Promise<string> {
+    const args = ["diff", "--no-ext-diff", "--no-textconv", "--no-color", ...extra, `${baseId}...${headId}`, "--"];
+    // Past the output limit the process is killed and the diff is lost, so say that instead of surfacing the raw error.
+    const result = await git(args, this.root).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") throw error;
+      throw new Error(`the diff is over the ${MAX_OUTPUT_MB} MB limit and cannot be read`);
+    });
     if (result.code !== 0) throw new Error(`git diff failed: ${firstLine(result.stderr)}`);
     return result.stdout;
   }

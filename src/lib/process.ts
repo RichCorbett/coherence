@@ -1,12 +1,13 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type ProcessResult = { code: number; stdout: string; stderr: string };
 
 // Large repos make git and the npx tools print a lot; the default buffer would kill them mid-run.
-const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+export const MAX_OUTPUT_MB = 64;
+const MAX_OUTPUT_BYTES = MAX_OUTPUT_MB * 1024 * 1024;
 
 /** Runs a program to completion. A non-zero exit is a result to inspect, not an error. */
 export function runProcess(command: string, args: string[], cwd: string): Promise<ProcessResult> {
@@ -31,10 +32,38 @@ export async function runPinnedTool(args: string[]): Promise<ProcessResult> {
 
 /** A new private folder in coherence's own cache area, for the caller to remove. */
 export async function makeCacheFolder(prefix: string): Promise<string> {
-  // Not under the system temp folder: npx also searches every parent of its working folder, and other users can write to /tmp.
-  const parent = join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "coherence");
+  const parent = cacheParent();
   await mkdir(parent, { recursive: true, mode: 0o700 });
   return mkdtemp(join(parent, prefix));
+}
+
+function cacheParent(): string {
+  // Not under the system temp folder: npx also searches every parent of its working folder, and other users can write to /tmp.
+  return join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "coherence");
+}
+
+/**
+ * Removes folders made by `makeCacheFolder(prefix)` that were last touched over `maxAgeMs` ago.
+ * It matches only its own prefix and only real folders, so nothing else in the cache and nothing a symlink points at is touched.
+ * Returns how many it removed and how many it could not.
+ */
+export async function pruneCacheFolders(prefix: string, maxAgeMs: number): Promise<{ removed: number; failed: number }> {
+  const parent = cacheParent();
+  const entries = await readdir(parent, { withFileTypes: true }).catch(() => []);
+  let removed = 0;
+  let failed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+    const folder = join(parent, entry.name);
+    try {
+      if (Date.now() - (await stat(folder)).mtimeMs <= maxAgeMs) continue;
+      await rm(folder, { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { removed, failed };
 }
 
 /** Gives `work` an empty folder and removes it afterwards, however `work` ends. */
