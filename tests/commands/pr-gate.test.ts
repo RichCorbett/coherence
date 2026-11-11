@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
 import { PrGateCommand } from "../../src/commands/pr-gate.ts";
-import { Exit } from "../../src/lib/base-command.ts";
+import { BaseCommand, Exit } from "../../src/lib/base-command.ts";
 import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
@@ -352,4 +352,51 @@ test("a PR for a named branch that has no local commit here is refused, and says
     assert.match(reason, new RegExp(`branch ${head} has no local commit here`), head);
     assert.match(reason, /Check out or fetch the branch/, head);
   }
+});
+
+/** A stand-in for the check command that fails the way a crash or a broken tool does. */
+class BrokenCheck extends BaseCommand {
+  readonly name = "check";
+  readonly usage = "";
+  private readonly outcome: number | Error;
+
+  constructor(outcome: number | Error) {
+    super();
+    this.outcome = outcome;
+  }
+
+  async execute(): Promise<number> {
+    if (this.outcome instanceof Error) throw this.outcome;
+    return this.outcome;
+  }
+}
+
+test("pass refuses with exit 3 when the checks could not run, and never calls that a finding", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const head = git(repo.root, "rev-parse", "HEAD");
+  const outcomes: [number | Error, string][] = [
+    [Exit.usage, "coherence check exited 2"],
+    [Exit.failed, "coherence check exited 3"],
+    [new Error("madge failed: boom"), "madge failed: boom"],
+  ];
+  for (const [outcome, why] of outcomes) {
+    const invocation = fakeInvocation(repo.root, ["pass", "--verdict", "merge", "--head", head]);
+    assert.equal(await new PrGateCommand(new BrokenCheck(outcome)).execute(invocation), Exit.failed, why);
+    assert.equal(invocation.errors.join("\n"), `coherence pr-gate pass refused: checks could not run: ${why}.`);
+  }
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
+test("when the base cannot be recorded, the head is not recorded either", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  // git config refuses to overwrite a key that holds several values, so the base write fails.
+  for (const value of ["one", "two"]) git(repo.root, "config", "--add", "branch.feature.coherence-reviewed-base", value);
+  await assert.rejects(pass(repo.root, "--base", "main"), /git config failed/);
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+
+  // A pass without a base clears every old value, not only a single one.
+  assert.equal(await pass(repo.root), Exit.ok);
+  assert.equal(recorded(repo.root, "coherence-reviewed-base"), undefined);
 });

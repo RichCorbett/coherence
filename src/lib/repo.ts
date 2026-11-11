@@ -108,10 +108,11 @@ export class Repo {
 
   /** Records that commit `headId` was reviewed, and the base it was reviewed against. A pass without a base drops any older base, so the two always belong to one review. */
   async markCommitReviewed(branch: string, headId: string, baseId?: string): Promise<void> {
+    // The head is what the gate honours, so it is written last: a failed base write leaves no approval behind.
+    const base = await git(baseId ? ["config", reviewedBaseKey(branch), baseId] : ["config", "--unset-all", reviewedBaseKey(branch)], this.root);
+    if (base.code !== 0 && !(baseId === undefined && base.code === CONFIG_KEY_ABSENT)) throw new Error(`git config failed: ${base.stderr.trim()}`);
     const head = await git(["config", reviewedKey(branch), headId], this.root);
     if (head.code !== 0) throw new Error(`git config failed: ${head.stderr.trim()}`);
-    const base = await git(baseId ? ["config", reviewedBaseKey(branch), baseId] : ["config", "--unset", reviewedBaseKey(branch)], this.root);
-    if (base.code !== 0 && !(baseId === undefined && base.code === CONFIG_KEY_ABSENT)) throw new Error(`git config failed: ${base.stderr.trim()}`);
   }
 
   /** True when a tracked file differs from HEAD, staged or not. Untracked files are not part of any commit, so they do not count. */

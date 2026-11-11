@@ -117,8 +117,15 @@ export class PrGateCommand extends BaseCommand {
     if (await repo.hasUncommittedChanges()) return this.refusePass(invocation, "tracked files have uncommitted changes, so the tree is not the reviewed commit");
     const baseId = base === undefined ? undefined : await repo.resolveCommit(base);
     // Over the same scope the review used, so the recorded base and the checked base are one commit.
-    const checked = await this.check.execute({ ...invocation, args: baseId ? ["--base", baseId] : [] });
-    if (checked !== Exit.ok) return this.refusePass(invocation, "coherence check reports findings, listed above. Fix them and review again");
+    const checked = await this.check
+      .execute({ ...invocation, args: baseId ? ["--base", baseId] : [] })
+      .catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
+    // A crash or a failed tool is not a finding, and must not be reported as one.
+    if (typeof checked === "string" || (checked !== Exit.ok && checked !== Exit.findings)) {
+      const why = typeof checked === "string" ? checked : `coherence check exited ${checked}`;
+      return this.refusePass(invocation, `checks could not run: ${why}`, Exit.failed);
+    }
+    if (checked === Exit.findings) return this.refusePass(invocation, "coherence check reports findings, listed above. Fix them and review again");
 
     await repo.markCommitReviewed(branch, head, baseId);
     invocation.print(`recorded a coherence review for ${branch} at ${head.slice(0, 8)}`);
