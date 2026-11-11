@@ -12,39 +12,81 @@ export function shellCommands(line: string): string[][] {
   return [...commands, ...substitutions.flatMap(shellCommands), ...commands.flatMap(wrapped)];
 }
 
-/**
- * What in a line can put words or code in front of a command that its parsed words do not show, or undefined when nothing can:
- * a substitution outside double quotes, whose output splits into new words, or a `name()` function definition, which can shadow any command.
- * The `function name` form needs no check here: its first word is `function`, which `shellCommands` already shows.
- * A heredoc body with a quoted delimiter is data. One without still expands, so a substitution in it counts.
- */
-export function hiddenCode(line: string): string | undefined {
-  let expanding = "";
-  const text = line.replace(HEREDOC, (match: string, quote: string, _name: string, rest: string) => {
-    if (!quote && match.includes("\n")) expanding += match.slice(match.indexOf("\n"));
-    return rest;
-  });
-  if (/\$\(|`/.test(expanding)) return "a substitution in a heredoc whose delimiter is not quoted";
+/** Stands for a word that was a double-quoted `$(cat <<'END' ... END)`: text that runs nothing, and whose content is not read. */
+export const HEREDOC_TEXT = "\0heredoc text";
 
-  let quote: string | undefined;
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (quote === "'") {
-      if (char === "'") quote = undefined;
-    } else if (char === "\\") {
+/** Unquoted characters the shell leaves as they are. Anything else separates, redirects, expands or globs. */
+const PLAIN = /[\w\-./:=@,+%]/;
+const QUOTED_HEREDOC = /"\$\(\s*cat\s*<<\s*(['"])([A-Za-z_]\w*)\1[ \t]*\n/y;
+const CLOSES_SUBSTITUTION = /\s*\)"/y;
+
+/**
+ * The words of a line that is one simple command the shell runs as written, or undefined when it is anything more: another command,
+ * a redirect, a variable, a substitution, a wildcard, or a character this does not know. Words may be plain, single-quoted, or
+ * double-quoted with no `$` or backtick. The one exception is a word that is exactly a double-quoted `$(cat <<'END' ... END)` with a
+ * quoted delimiter, so the body expands nothing; it comes back as HEREDOC_TEXT.
+ */
+export function staticWords(line: string): string[] | undefined {
+  const words: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === " " || line[i] === "\t") {
       i++;
-    } else if (quote === '"') {
-      if (char === '"') quote = undefined;
-      else if (text.startsWith("$(", i)) i = closingParen(text, i + 1);
-    } else if (char === "'" || char === '"') {
-      quote = char;
-    } else if (char === "`" || text.startsWith("$(", i)) {
-      return "a substitution outside double quotes";
-    } else if (char === "(" && /[\w.:-]\s*$/.test(text.slice(0, i)) && /^\(\s*\)/.test(text.slice(i))) {
-      return "a function definition";
+      continue;
     }
+    let word = "";
+    const heredoc = quotedHeredoc(line, i);
+    if (heredoc !== -1) {
+      word = HEREDOC_TEXT;
+      i = heredoc;
+    }
+    while (word !== HEREDOC_TEXT && i < line.length && line[i] !== " " && line[i] !== "\t") {
+      const char = line[i];
+      if (PLAIN.test(char)) {
+        word += char;
+        i++;
+      } else if (char === "'") {
+        const end = line.indexOf("'", i + 1);
+        if (end === -1) return undefined;
+        word += line.slice(i + 1, end);
+        i = end + 1;
+      } else if (char === '"') {
+        for (i++; line[i] !== '"'; ) {
+          if (i >= line.length || line[i] === "$" || line[i] === "`") return undefined;
+          if (line[i] === "\\" && line[i + 1] === "\n") {
+            i += 2;
+            continue;
+          }
+          if (line[i] === "\\" && /[$`"\\]/.test(line[i + 1] ?? "")) i++;
+          word += line[i++];
+        }
+        i++;
+      } else {
+        return undefined;
+      }
+    }
+    if (i < line.length && line[i] !== " " && line[i] !== "\t") return undefined;
+    words.push(word);
   }
-  return undefined;
+  return words;
+}
+
+/** Where a double-quoted `$(cat <<'END' ... END)` starting at `at` ends, or -1 when none starts there. The heredoc ends at its first line that is exactly the delimiter, as the shell ends it, and only `)"` may follow. */
+function quotedHeredoc(line: string, at: number): number {
+  QUOTED_HEREDOC.lastIndex = at;
+  const open = QUOTED_HEREDOC.exec(line);
+  if (!open) return -1;
+  for (let start = QUOTED_HEREDOC.lastIndex; start <= line.length; ) {
+    const newline = line.indexOf("\n", start);
+    const end = newline === -1 ? line.length : newline;
+    if (line.slice(start, end) === open[2]) {
+      CLOSES_SUBSTITUTION.lastIndex = end;
+      return CLOSES_SUBSTITUTION.exec(line) ? CLOSES_SUBSTITUTION.lastIndex : -1;
+    }
+    if (newline === -1) return -1;
+    start = newline + 1;
+  }
+  return -1;
 }
 
 function wrapped(words: string[]): string[][] {

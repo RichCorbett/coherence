@@ -1,51 +1,52 @@
 import { basename } from "node:path";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
-import { hiddenCode, shellCommands } from "../lib/shell-commands.ts";
+import { HEREDOC_TEXT, shellCommands, staticWords } from "../lib/shell-commands.ts";
 
-type PrCreate = { words: string[]; before: string[]; gh: string[] };
+/** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
+const COULD_BE_GH = (word: string) => basename(word) === "gh" || /[$`*?[{\\]/.test(word);
 
-/** The command on a parsed line that opens a PR: all its words, those before `gh`, and those after it. Undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
-function prCreate(line: string[][]): PrCreate | undefined {
-  for (const words of line) {
-    const gh = words.findIndex((word) => basename(word) === "gh");
+/**
+ * Whether a parsed line could open a PR: a command with `pr` and then `create` after a word that is or could become `gh`, or one that
+ * starts with `pr`, where a substitution split it from its executable. Broad on purpose, since a line this matches must then be exactly
+ * `gh pr create`; a mention in quoted text is one word, so it never matches.
+ */
+function opensPr(line: string[][]): boolean {
+  return line.some((words) => {
+    const gh = words[0] === "pr" ? 0 : words.findIndex(COULD_BE_GH);
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
-    if (pr !== -1 && words[pr + 1] === "create") return { words, before: words.slice(0, gh), gh: words.slice(gh + 1) };
-  }
-  return undefined;
+    return pr !== -1 && words.indexOf("create", pr) !== -1;
+  });
 }
 
-const PRINTS = new Set(["cat", "echo", "printf"]);
+const ONE_COMMAND =
+  "the line is not exactly one gh pr create command with fixed words. Run gh pr create on its own, from the repo's folder, " +
+  "with nothing before gh, no other commands, and no variables, substitutions or wildcards; " +
+  `a --body may be "$(cat <<'EOF' ... EOF)"`;
 
-/** Whether a command only prints text and writes no file, such as the `cat` of a heredoc that fills `--body`. Quotes are gone by now, so any `>` counts as a redirect. */
-function onlyPrints(words: string[]): boolean {
-  return PRINTS.has(words[0]) && !words.some((word) => word.includes(">"));
-}
-
-const ON_ITS_OWN ="run gh pr create on its own, as a separate command from the repo's folder";
-
-/** gh pr create's options by short and long name, with the -R it inherits, from its `--help` as remembered rather than read from gh. */
+/** gh pr create's options by short and long name, with the -R it inherits, as `gh pr create --help` lists them on gh 2.103.2. */
 const TAKES_VALUE = new Map([["a", "assignee"], ["B", "base"], ["b", "body"], ["F", "body-file"], ["H", "head"], ["l", "label"], ["m", "milestone"], ["p", "project"], ["r", "reviewer"], ["R", "repo"], ["T", "template"], ["t", "title"]]);
-const TAKES_VALUE_LONG = new Set([...TAKES_VALUE.values(), "recover"]);
+const TAKES_VALUE_LONG = new Set([...TAKES_VALUE.values(), "attach", "recover"]);
 const SWITCHES = new Map([["d", "draft"], ["e", "editor"], ["f", "fill"], ["h", "help"], ["w", "web"]]);
 const SWITCHES_LONG = new Set([...SWITCHES.values(), "dry-run", "fill-first", "fill-verbose", "no-maintainer-edit"]);
 
 /**
  * The options gh would read from `words`, by long name, the way its flag parser reads them: `--name value`, `--name=value`,
  * `-x value`, `-xvalue`, `-x=value`, and groups such as `-dH value`. A word taken as a value is never read as an option.
- * Stops at the first option it does not know, since what follows it could be that option's value or another option.
+ * Stops at the first word it cannot read as an option, since gh pr create takes no other words, and what follows an unknown option
+ * could be its value or another option.
  */
 function options(words: string[]): { found: [string, string | undefined][]; unknown?: string } {
   const found: [string, string | undefined][] = [];
   for (let at = 0; at < words.length; at++) {
     const word = words[at];
-    if (word === "--") break;
+    if (!word.startsWith("-") || word === "-") return { found, unknown: word };
     if (word.startsWith("--")) {
       const [name, ...value] = word.slice(2).split("=");
       if (TAKES_VALUE_LONG.has(name)) found.push([name, value.length ? value.join("=") : words[++at]]);
       else if (SWITCHES_LONG.has(name)) found.push([name, undefined]);
       else return { found, unknown: word };
-    } else if (word.length > 1 && word.startsWith("-")) {
+    } else {
       for (let i = 1; i < word.length; i++) {
         const name = TAKES_VALUE.get(word[i]);
         const rest = word.slice(i + 1);
@@ -62,19 +63,23 @@ function options(words: string[]): { found: [string, string | undefined][]; unkn
   return { found };
 }
 
-/** Why the gate cannot judge this line, or undefined when it can. The hook runs before the whole line, so the gh command must be all the line runs besides commands that only print, run directly, aimed at this folder's repository. Anything else could move HEAD, change folder or point gh elsewhere first. */
-function unjudgeable(raw: string, line: string[][], pr: PrCreate): string | undefined {
-  const hidden = hiddenCode(raw);
-  if (hidden) return `the line holds ${hidden}, which can change what runs; ${ON_ITS_OWN}`;
-  const other = line.find((words) => words !== pr.words && !onlyPrints(words));
-  if (other) return `the same line runs another command; ${ON_ITS_OWN}, and run ${other[0]} separately first`;
-  const [first] = pr.before;
-  if (first) return `${first} comes before gh, and can change where or how it runs; ${ON_ITS_OWN}, with nothing in front of gh`;
-  const { found, unknown } = options(pr.gh);
-  if (unknown) return `coherence does not know the option ${unknown}, so it cannot tell which branch the PR names; ${ON_ITS_OWN}, without it`;
-  if (found.some(([name]) => name === "repo")) return `--repo points gh at a repository the gate did not check; ${ON_ITS_OWN}`;
-  if (found.filter(([name]) => name === "head").length > 1) return "the PR's head is named more than once. Name it once, with --head <branch>";
-  return undefined;
+/**
+ * The options of a PR line the gate can judge, or why it cannot. The hook runs before the line, and the shell expands it after,
+ * so the line must be exactly `gh pr create` and options whose words the shell leaves as they are, aimed at this folder's repository.
+ */
+function prOptions(raw: string): { args: string[] } | { why: string } {
+  const words = staticWords(raw.trim());
+  if (!words || words[0] !== "gh" || words[1] !== "pr" || words[2] !== "create") return { why: ONE_COMMAND };
+  for (const name of ["GH_REPO", "GH_HOST"]) {
+    if (process.env[name]) return { why: `${name} is set in the environment, so gh may open the PR somewhere other than this folder's repository. Unset ${name}, then open the PR again` };
+  }
+  const args = words.slice(3);
+  const { found, unknown } = options(args);
+  if (unknown) return { why: `coherence cannot read ${unknown === HEREDOC_TEXT ? "a substitution" : unknown} as an option of gh pr create, so it cannot tell which branch the PR names. ${ONE_COMMAND}` };
+  if (found.some(([name, value]) => value === HEREDOC_TEXT && name !== "body")) return { why: `only --body may be a substitution. ${ONE_COMMAND}` };
+  if (found.some(([name]) => name === "repo")) return { why: `--repo points gh at a repository the gate did not check. ${ONE_COMMAND}` };
+  if (found.filter(([name]) => name === "head").length > 1) return { why: "the PR's head is named more than once. Name it once, with --head <branch>" };
+  return { args };
 }
 
 /** The command and folder a PreToolUse hook names, or undefined when the input is not a hook payload. */
@@ -114,21 +119,19 @@ export class PrGateCommand extends BaseCommand {
       this.deny(invocation, UNREADABLE_HOOK);
       return Exit.ok;
     }
-    const line = shellCommands(hook.command);
-    const pr = prCreate(line);
-    if (!pr) return Exit.ok;
-    const why = unjudgeable(hook.command, line, pr);
-    if (why) return this.cannotCheck(invocation, why);
+    if (!opensPr(shellCommands(hook.command))) return Exit.ok;
+    const pr = prOptions(hook.command);
+    if ("why" in pr) return this.cannotCheck(invocation, pr.why);
 
     // Once a PR is being opened, anything that stops the gate judging it refuses the PR instead of letting it through.
-    return this.judge(invocation, hook.cwd ?? invocation.cwd, pr.gh).catch((error: unknown) =>
+    return this.judge(invocation, hook.cwd ?? invocation.cwd, pr.args).catch((error: unknown) =>
       this.cannotCheck(invocation, error instanceof Error ? error.message : String(error)),
     );
   }
 
-  private async judge(invocation: Invocation, cwd: string, gh: string[]): Promise<number> {
+  private async judge(invocation: Invocation, cwd: string, args: string[]): Promise<number> {
     const repo = await Repo.open(cwd);
-    const branch = headBranch(gh) ?? (await repo.currentBranch());
+    const branch = headBranch(args) ?? (await repo.currentBranch());
     if (!branch) return this.cannotCheck(invocation, "HEAD is detached. Check out the PR's branch, or name it with --head, then open the PR again");
     const tip = await repo.branchCommit(branch);
     if (!tip) return this.cannotCheck(invocation, `branch ${branch} has no local commit here. Check out or fetch the branch, then open the PR again`);
