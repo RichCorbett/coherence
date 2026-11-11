@@ -21,26 +21,27 @@ const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && 
  * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or runs text as commands
  * through `eval` or `sh -c` and names `gh` or `pr`. A parsed command matches when `pr` and then `create` follow a word that is or
  * could become `gh`, such as `g[h]`, or when it starts with `pr`, where a substitution split it from its executable. It also matches
- * a command with a word that is literally `gh`, wherever it sits, and an expandable word after it, unless that gh's subcommand is
- * fixed and is not `pr create`.
+ * a command with a word that is literally `gh`, wherever it sits, or a first word that could become `gh`, and an expandable word
+ * after it, unless that gh's subcommand is fixed and is not `pr create`.
  *
  * Considered and rejected: finding the executable by skipping wrappers (`env`, `sudo`, `nice`) and their options. It needs a table
  * of which options take a value, and the table grew its own bypasses (`/usr/bin/env`, `sudo -Eu user`, `A+=x`). Looking at every
- * `gh` word needs no table. Accepted costs: a fully dynamic executable such as `"$GH" "$P" create` is not seen, the documented
- * `$CMD` class; and `printf '%s %s' gh "$HOME"` is refused, which falls under "a mention of gh is refused".
+ * `gh` word needs no table. Considered and rejected: anchoring on an expandable word in any position, because `ls *.ts *.md` and
+ * `cp $SRC $DST` would be refused; only the first word is anchored, which covers `"$GH" "$P" create` and `g[h] "$P" create`.
+ * Accepted costs: an expandable executable behind a wrapper (`env $GH "$P" create`) and `$CMD` are not seen; `$EDITOR $FILE` is
+ * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused".
  */
 function opensPr(raw: string, line: string[][]): boolean {
   if (NAMES_PR_CREATE.test(raw) || (RUNS_TEXT.test(raw) && NAMES_GH_OR_PR.test(raw))) return true;
   return line.some((words) => {
     // A gh with an expandable word after it is a candidate unless its subcommand is proven fixed and not `pr create`: an option or
     // an expansion where the subcommand belongs could hide `pr` or `create`, and prOptions then refuses it.
-    const hidden = words.some(
-      (word, at) =>
-        basename(word) === "gh" &&
-        words.slice(at + 1).some(COULD_EXPAND) &&
-        !(FIXED(words[at + 1]) && (words[at + 1] !== "pr" || (FIXED(words[at + 2]) && words[at + 2] !== "create"))),
-    );
-    if (hidden) return true;
+    let expandsLater = false;
+    for (let at = words.length - 1; at >= 0; at--) {
+      const anchor = basename(words[at]) === "gh" || (at === 0 && COULD_BE_GH(words[at]));
+      if (anchor &&expandsLater && !(FIXED(words[at + 1]) && (words[at + 1] !== "pr" || (FIXED(words[at + 2]) && words[at + 2] !== "create")))) return true;
+      expandsLater ||= COULD_EXPAND(words[at]);
+    }
     const gh = words[0] === "pr" ? 0 : words.findIndex(COULD_BE_GH);
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
     return pr !== -1 && words.indexOf("create", pr) !== -1;
