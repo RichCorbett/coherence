@@ -262,30 +262,62 @@ test("a print command that writes a file on the same line as the PR is refused",
   }
 });
 
-test("gh run through a wrapper is refused, since the wrapper can change where it runs", async () => {
+test("anything in front of gh, a wrapper or any assignment, is refused, since it can change where or how gh runs", async () => {
   const repo = await reviewedRepo();
-  for (const [command, wrapper] of [
+  for (const [command, first] of [
     ["env -C .. gh pr create", "env"],
     ["env --chdir=.. gh pr create", "env"],
     ["command gh pr create", "command"],
+    ["GIT_DIR=../x/.git gh pr create", "GIT_DIR=../x/.git"],
+    ["GIT_WORK_TREE=../x gh pr create", "GIT_WORK_TREE=../x"],
+    ["PATH=. gh pr create", "PATH=."],
+    ["GH_REPO=o/r gh pr create", "GH_REPO=o/r"],
+    ["GH_HOST=example.com gh pr create", "GH_HOST=example.com"],
+    ["GH_TOKEN=abc gh pr create", "GH_TOKEN=abc"],
   ]) {
-    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`gh runs through ${wrapper}, which can change where it runs`), command);
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`${first} comes before gh, and can change where or how it runs`), command);
+  }
+  for (const command of ["export GIT_DIR=../x/.git; gh pr create", "GH_REPO=o/r; gh pr create"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /runs another command/, command);
   }
 });
 
 test("a PR pointed at another repository is refused", async () => {
   const repo = await reviewedRepo();
-  for (const command of [
-    "gh pr create -R o/r",
-    "gh -R o/r pr create",
-    "gh pr create -Ro/r",
-    "gh pr create --repo o/r",
-    "gh pr create --repo=o/r",
-    "GH_REPO=o/r gh pr create",
-    "GH_HOST=example.com gh pr create",
-    "env GH_REPO=o/r gh pr create",
+  for (const command of ["gh pr create -R o/r", "gh -R o/r pr create", "gh pr create -Ro/r", "gh pr create -dR o/r", "gh pr create --repo o/r", "gh pr create --repo=o/r"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /--repo points gh at a repository the gate did not check/, command);
+  }
+});
+
+test("a word read as another option's value is not a head, even when it looks like one", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["gh pr create --title -Hnope --fill", "gh pr create -t -Hnope", "gh pr create -tHnope", "gh pr create --body=x -b -Hnope"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
+test("an option coherence does not know is refused, since what follows it could be its value or a head", async () => {
+  const repo = await reviewedRepo();
+  for (const [command, unknown] of [
+    ["gh pr create --frobnicate -Hnope", "--frobnicate"],
+    ["gh pr create -zHnope", "-zHnope"],
   ]) {
-    assert.match(refusal(await runHook(repo.root, command)), /points gh at a repository the gate did not check/, command);
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`does not know the option ${unknown},`), command);
+  }
+});
+
+test("a function definition on the PR's line is refused, since it can shadow gh, cat, echo or printf", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["cat() (echo); cat <<'EOF' | gh pr create --body-file -\nb\nEOF", "gh () (echo) ; gh pr create"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /holds a function definition/, command);
+  }
+  assert.match(refusal(await runHook(repo.root, "function echo { :; }; gh pr create")), /runs another command; .*run function separately first/);
+});
+
+test("a substitution outside double quotes is refused, since its output becomes words gh reads", async () => {
+  const repo = await reviewedRepo();
+  for (const command of ["gh pr create $(echo --repo x)", "gh pr create `echo -R x`", "cat <<EOF | gh pr create --body-file -\n$(echo hi)\nEOF"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /substitution/, command);
   }
 });
 
@@ -295,19 +327,21 @@ test("a head attached to -H is read the way gh reads it", async () => {
   await pass(repo.root);
   git(repo.root, "checkout", "-q", "main");
   git(repo.root, "branch", "unreviewed");
-  for (const command of ["gh pr create -Hintegration --fill", "gh pr create -H=integration --fill"]) {
+  for (const command of ["gh pr create -Hintegration --fill", "gh pr create -H=integration --fill", "gh pr create -fHintegration", "gh pr create -dH integration"]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
-  assert.match(refusal(await runHook(repo.root, "gh pr create -Hunreviewed")), /branch unreviewed has not had a coherence review/);
+  for (const command of ["gh pr create -Hunreviewed", "gh pr create -dH unreviewed"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /branch unreviewed has not had a coherence review/, command);
+  }
 });
 
-test("a head named more than once, or inside a group of short options, is refused as ambiguous", async () => {
+test("a head named more than once is refused as ambiguous", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "integration");
   await pass(repo.root);
   git(repo.root, "branch", "unreviewed");
-  for (const command of ["gh pr create --head integration --head unreviewed", "gh pr create -H integration --head=unreviewed", "gh pr create -dH unreviewed"]) {
-    assert.match(refusal(await runHook(repo.root, command)), /head is named more than once or inside a group of short options/, command);
+  for (const command of ["gh pr create --head integration --head unreviewed", "gh pr create -H integration --head=unreviewed", "gh pr create -dHintegration -H unreviewed"]) {
+    assert.match(refusal(await runHook(repo.root, command)), /head is named more than once/, command);
   }
 });
 

@@ -1,16 +1,16 @@
 import { basename } from "node:path";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { Repo } from "../lib/repo.ts";
-import { shellCommands } from "../lib/shell-commands.ts";
+import { hiddenCode, shellCommands } from "../lib/shell-commands.ts";
 
-type PrCreate = { words: string[]; before: string[]; gh: string[]; args: string[] };
+type PrCreate = { words: string[]; before: string[]; gh: string[] };
 
-/** The command on a parsed line that opens a PR: all its words, those before `gh`, those after it, and those after `gh pr create`. Undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
+/** The command on a parsed line that opens a PR: all its words, those before `gh`, and those after it. Undefined when the line does not open a PR. Reads whole words, past any wrapper or `gh` option, so a mention in quoted text is never taken for the command. */
 function prCreate(line: string[][]): PrCreate | undefined {
   for (const words of line) {
     const gh = words.findIndex((word) => basename(word) === "gh");
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
-    if (pr !== -1 && words[pr + 1] === "create") return { words, before: words.slice(0, gh), gh: words.slice(gh + 1), args: words.slice(pr + 2) };
+    if (pr !== -1 && words[pr + 1] === "create") return { words, before: words.slice(0, gh), gh: words.slice(gh + 1) };
   }
   return undefined;
 }
@@ -24,29 +24,56 @@ function onlyPrints(words: string[]): boolean {
 
 const ON_ITS_OWN ="run gh pr create on its own, as a separate command from the repo's folder";
 
-/** Whether `word` is a group of short options, such as `-H`, `-Hvalue` or `-dH`, that contains `letter`. */
-function shortOption(word: string, letter: string): boolean {
-  return /^-[A-Za-z]/.test(word) && word.includes(letter);
-}
+/** gh pr create's options by short and long name, with the -R it inherits, from its `--help` as remembered rather than read from gh. */
+const TAKES_VALUE = new Map([["a", "assignee"], ["B", "base"], ["b", "body"], ["F", "body-file"], ["H", "head"], ["l", "label"], ["m", "milestone"], ["p", "project"], ["r", "reviewer"], ["R", "repo"], ["T", "template"], ["t", "title"]]);
+const TAKES_VALUE_LONG = new Set([...TAKES_VALUE.values(), "recover"]);
+const SWITCHES = new Map([["d", "draft"], ["e", "editor"], ["f", "fill"], ["h", "help"], ["w", "web"]]);
+const SWITCHES_LONG = new Set([...SWITCHES.values(), "dry-run", "fill-first", "fill-verbose", "no-maintainer-edit"]);
 
-function namesHead(word: string): boolean {
-  return word === "--head" || word.startsWith("--head=") || shortOption(word, "H");
+/**
+ * The options gh would read from `words`, by long name, the way its flag parser reads them: `--name value`, `--name=value`,
+ * `-x value`, `-xvalue`, `-x=value`, and groups such as `-dH value`. A word taken as a value is never read as an option.
+ * Stops at the first option it does not know, since what follows it could be that option's value or another option.
+ */
+function options(words: string[]): { found: [string, string | undefined][]; unknown?: string } {
+  const found: [string, string | undefined][] = [];
+  for (let at = 0; at < words.length; at++) {
+    const word = words[at];
+    if (word === "--") break;
+    if (word.startsWith("--")) {
+      const [name, ...value] = word.slice(2).split("=");
+      if (TAKES_VALUE_LONG.has(name)) found.push([name, value.length ? value.join("=") : words[++at]]);
+      else if (SWITCHES_LONG.has(name)) found.push([name, undefined]);
+      else return { found, unknown: word };
+    } else if (word.length > 1 && word.startsWith("-")) {
+      for (let i = 1; i < word.length; i++) {
+        const name = TAKES_VALUE.get(word[i]);
+        const rest = word.slice(i + 1);
+        if (name) {
+          found.push([name, rest === "" ? words[++at] : rest.length > 1 && rest.startsWith("=") ? rest.slice(1) : rest]);
+          break;
+        }
+        const switched = SWITCHES.get(word[i]);
+        if (!switched) return { found, unknown: word };
+        found.push([switched, undefined]);
+      }
+    }
+  }
+  return { found };
 }
 
 /** Why the gate cannot judge this line, or undefined when it can. The hook runs before the whole line, so the gh command must be all the line runs besides commands that only print, run directly, aimed at this folder's repository. Anything else could move HEAD, change folder or point gh elsewhere first. */
-function unjudgeable(line: string[][], pr: PrCreate): string | undefined {
+function unjudgeable(raw: string, line: string[][], pr: PrCreate): string | undefined {
+  const hidden = hiddenCode(raw);
+  if (hidden) return `the line holds ${hidden}, which can change what runs; ${ON_ITS_OWN}`;
   const other = line.find((words) => words !== pr.words && !onlyPrints(words));
   if (other) return `the same line runs another command; ${ON_ITS_OWN}, and run ${other[0]} separately first`;
-  const retarget =
-    pr.words.find((word) => /^GH_(REPO|HOST)=/.test(word)) ??
-    pr.gh.find((word) => word === "--repo" || word.startsWith("--repo=") || shortOption(word, "R"));
-  if (retarget) return `${retarget} points gh at a repository the gate did not check; ${ON_ITS_OWN}`;
-  const wrapper = pr.before.find((word) => !/^[A-Za-z_]\w*=/.test(word));
-  if (wrapper) return `gh runs through ${wrapper}, which can change where it runs; ${ON_ITS_OWN}, without ${wrapper}`;
-  const heads = pr.args.filter(namesHead);
-  if (heads.length > 1 || heads.some((word) => shortOption(word, "H") && !word.startsWith("-H"))) {
-    return "the PR's head is named more than once or inside a group of short options. Name it once, with --head <branch>";
-  }
+  const [first] = pr.before;
+  if (first) return `${first} comes before gh, and can change where or how it runs; ${ON_ITS_OWN}, with nothing in front of gh`;
+  const { found, unknown } = options(pr.gh);
+  if (unknown) return `coherence does not know the option ${unknown}, so it cannot tell which branch the PR names; ${ON_ITS_OWN}, without it`;
+  if (found.some(([name]) => name === "repo")) return `--repo points gh at a repository the gate did not check; ${ON_ITS_OWN}`;
+  if (found.filter(([name]) => name === "head").length > 1) return "the PR's head is named more than once. Name it once, with --head <branch>";
   return undefined;
 }
 
@@ -61,14 +88,9 @@ function hookInput(stdin: string): { command: string; cwd?: string } | undefined
   }
 }
 
-/** The branch the PR names as its head, read the way gh reads it: `--head x`, `--head=x`, `-H x`, `-Hx` or `-H=x`. */
-function headBranch(args: string[]): string | undefined {
-  for (const [at, word] of args.entries()) {
-    if (word === "--head" || word === "-H") return args[at + 1];
-    if (word.startsWith("--head=")) return word.slice("--head=".length);
-    if (word.startsWith("-H")) return word.slice(word.startsWith("-H=") && word.length > 3 ? 3 : 2);
-  }
-  return undefined;
+/** The branch the PR names as its head, read the way gh reads it. */
+function headBranch(words: string[]): string | undefined {
+  return options(words).found.find(([name]) => name === "head")?.[1];
 }
 
 const UNREADABLE_HOOK =
@@ -95,18 +117,18 @@ export class PrGateCommand extends BaseCommand {
     const line = shellCommands(hook.command);
     const pr = prCreate(line);
     if (!pr) return Exit.ok;
-    const why = unjudgeable(line, pr);
+    const why = unjudgeable(hook.command, line, pr);
     if (why) return this.cannotCheck(invocation, why);
 
     // Once a PR is being opened, anything that stops the gate judging it refuses the PR instead of letting it through.
-    return this.judge(invocation, hook.cwd ?? invocation.cwd, pr.args).catch((error: unknown) =>
+    return this.judge(invocation, hook.cwd ?? invocation.cwd, pr.gh).catch((error: unknown) =>
       this.cannotCheck(invocation, error instanceof Error ? error.message : String(error)),
     );
   }
 
-  private async judge(invocation: Invocation, cwd: string, args: string[]): Promise<number> {
+  private async judge(invocation: Invocation, cwd: string, gh: string[]): Promise<number> {
     const repo = await Repo.open(cwd);
-    const branch = headBranch(args) ?? (await repo.currentBranch());
+    const branch = headBranch(gh) ?? (await repo.currentBranch());
     if (!branch) return this.cannotCheck(invocation, "HEAD is detached. Check out the PR's branch, or name it with --head, then open the PR again");
     const tip = await repo.branchCommit(branch);
     if (!tip) return this.cannotCheck(invocation, `branch ${branch} has no local commit here. Check out or fetch the branch, then open the PR again`);

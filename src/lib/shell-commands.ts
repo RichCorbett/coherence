@@ -12,6 +12,41 @@ export function shellCommands(line: string): string[][] {
   return [...commands, ...substitutions.flatMap(shellCommands), ...commands.flatMap(wrapped)];
 }
 
+/**
+ * What in a line can put words or code in front of a command that its parsed words do not show, or undefined when nothing can:
+ * a substitution outside double quotes, whose output splits into new words, or a `name()` function definition, which can shadow any command.
+ * The `function name` form needs no check here: its first word is `function`, which `shellCommands` already shows.
+ * A heredoc body with a quoted delimiter is data. One without still expands, so a substitution in it counts.
+ */
+export function hiddenCode(line: string): string | undefined {
+  let expanding = "";
+  const text = line.replace(HEREDOC, (match: string, quote: string, _name: string, rest: string) => {
+    if (!quote && match.includes("\n")) expanding += match.slice(match.indexOf("\n"));
+    return rest;
+  });
+  if (/\$\(|`/.test(expanding)) return "a substitution in a heredoc whose delimiter is not quoted";
+
+  let quote: string | undefined;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quote === "'") {
+      if (char === "'") quote = undefined;
+    } else if (char === "\\") {
+      i++;
+    } else if (quote === '"') {
+      if (char === '"') quote = undefined;
+      else if (text.startsWith("$(", i)) i = closingParen(text, i + 1);
+    } else if (char === "'" || char === '"') {
+      quote = char;
+    } else if (char === "`" || text.startsWith("$(", i)) {
+      return "a substitution outside double quotes";
+    } else if (char === "(" && /[\w.:-]\s*$/.test(text.slice(0, i)) && /^\(\s*\)/.test(text.slice(i))) {
+      return "a function definition";
+    }
+  }
+  return undefined;
+}
+
 function wrapped(words: string[]): string[][] {
   const shell = words.findIndex((word) => SHELL.test(basename(word)));
   if (shell !== -1 && RUNS_NEXT_WORD.test(words[shell + 1] ?? "")) return shellCommands(words[shell + 2] ?? "");
