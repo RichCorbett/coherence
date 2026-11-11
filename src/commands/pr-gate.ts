@@ -17,18 +17,17 @@ const NAMES_GH_OR_PR = /(?<![\w-])(gh|pr)(?![\w-])/;
  * Whether a line could open a PR, so that it must be exactly `gh pr create` or be refused. Broad on purpose, so it also matches a
  * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or runs text as commands
  * through `eval` or `sh -c` and names `gh` or `pr`. A parsed command matches when `pr` and then `create` follow a word that is or
- * could become `gh`, such as `g[h]`, with an expansion allowed in those two places only after a literal `gh`, or when it starts with `pr`, where a substitution split it from its executable.
+ * could become `gh`, such as `g[h]`, or when it starts with `pr`, where a substitution split it from its executable. It also matches
+ * a command that runs `gh` with an expandable word, unless the subcommand is fixed and is not `pr create`.
  */
 function opensPr(raw: string, line: string[][]): boolean {
   if (NAMES_PR_CREATE.test(raw) || (RUNS_TEXT.test(raw) && NAMES_GH_OR_PR.test(raw))) return true;
   return line.some((words) => {
-    // After a literal `gh`, a word that could expand right after it may be `pr create` by itself (a substitution splits the line
-    // there), and one right after `pr` may be `create`. Anywhere else an expansion is an ordinary argument.
-    const literal = words.findIndex((word) => basename(word) === "gh");
-    if (literal !== -1) {
-      if (words[literal + 1] !== undefined && COULD_EXPAND(words[literal + 1])) return true;
-      const at = words.indexOf("pr", literal);
-      if (at !== -1 && (words.indexOf("create", at) !== -1 || (words[at + 1] !== undefined && COULD_EXPAND(words[at + 1])))) return true;
+    // A command that runs gh and has an expandable word is a candidate unless its subcommand is proven fixed and not `pr create`:
+    // an option or an expansion where the subcommand belongs could hide `pr` or `create`, and prOptions then refuses it.
+    if (basename(words[0]) === "gh" && words.some(COULD_EXPAND)) {
+      const fixed = (word?: string) => word !== undefined && !word.startsWith("-") && !COULD_EXPAND(word);
+      if (!(fixed(words[1]) && (words[1] !== "pr" || (fixed(words[2]) && words[2] !== "create")))) return true;
     }
     const gh = words[0] === "pr" ? 0 : words.findIndex(COULD_BE_GH);
     const pr = gh === -1 ? -1 : words.indexOf("pr", gh);
