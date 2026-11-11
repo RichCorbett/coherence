@@ -143,12 +143,28 @@ test("hook input that is not JSON, or names no command, is refused when it could
   const folder = tempFolder();
   assert.match(refusal(await runRawHook(folder, "{not json gh pr create")), /hook input was not JSON/);
   assert.match(refusal(await runRawHook(folder, JSON.stringify({ cwd: folder, tool_input: { cmd: "gh pr create" } }))), /hook input was not JSON/);
+  // Escaped in the payload, the words only line up once the JSON is decoded.
+  for (const stdin of [String.raw`{"tool_input":{"cmd":"gh\u0020pr\u0020create"}}`, JSON.stringify({ other: ["gh\npr\ncreate --fill"] })]) {
+    assert.match(refusal(await runRawHook(folder, stdin)), /hook input was not JSON/, stdin);
+  }
 });
 
 test("hook input that is not JSON, or names no command, is let through when it cannot be opening a PR", async () => {
   const folder = tempFolder();
   assert.deepEqual(await runRawHook(folder, "{not json ls -la"), []);
   assert.deepEqual(await runRawHook(folder, JSON.stringify({ cwd: folder, tool_input: {} })), []);
+  for (const stdin of ["{not json high priority", "{not json printf high", "{not json gh pr status", JSON.stringify({ tool_input: { cmd: "gh pr status" } })]) {
+    assert.deepEqual(await runRawHook(folder, stdin), [], stdin);
+  }
+});
+
+test("a hook folder that is not a non-empty string is ignored, and the PR is judged from the working folder", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const cwd of [42, "", null, ["/"]]) {
+    const stdin = JSON.stringify({ cwd, tool_name: "Bash", tool_input: { command: "gh pr create --fill" } });
+    assert.match(refusal(await runRawHook(repo.root, stdin)), /branch feature has not had a coherence review/, String(cwd));
+  }
 });
 
 test("an unknown verb prints the usage and exits 2, and pass needs a branch", async () => {

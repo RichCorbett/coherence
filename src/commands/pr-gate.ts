@@ -13,13 +13,23 @@ function prCreateArgs(commandLine: string): string[] | undefined {
   return undefined;
 }
 
-/** The command and folder a PreToolUse hook names, or undefined when the input is not a hook payload. */
-function hookInput(stdin: string): { command: string; cwd?: string } | undefined {
+// The words that open a PR, in order, for hook input too broken to read the command from.
+const MAY_OPEN_PR = /\bgh\b[\s\S]*?\bpr\b[\s\S]*?\bcreate\b/;
+
+/** Every string in a parsed JSON value, so text the payload escaped is read as it decodes. */
+function jsonStrings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  return value && typeof value === "object" ? Object.values(value).flatMap(jsonStrings) : [];
+}
+
+/** The command and folder a PreToolUse hook names, or the text to search when the input is not a hook payload. */
+function hookInput(stdin: string): { command: string; cwd?: string } | { unreadable: string } {
   try {
     const hook = JSON.parse(stdin);
-    return typeof hook?.tool_input?.command === "string" ? { command: hook.tool_input.command, cwd: hook.cwd } : undefined;
+    if (typeof hook?.tool_input?.command !== "string") return { unreadable: jsonStrings(hook).join("\n") };
+    return { command: hook.tool_input.command, cwd: typeof hook.cwd === "string" && hook.cwd !== "" ? hook.cwd : undefined };
   } catch {
-    return undefined;
+    return { unreadable: stdin };
   }
 }
 
@@ -38,13 +48,10 @@ export class PrGateCommand extends BaseCommand {
     if (verb === "pass") return this.pass(invocation);
     if (verb !== undefined) return this.refuse(invocation);
 
-    const stdin = await invocation.readStdin();
-    const hook = hookInput(stdin);
+    const hook = hookInput(await invocation.readStdin());
     // The hook runs on every shell command, so unreadable input is refused only when it could be opening a PR.
-    if (!hook) {
-      return stdin.includes("gh") && stdin.includes("pr")
-        ? this.cannotCheck(invocation, "the hook input was not JSON naming a tool_input.command")
-        : Exit.ok;
+    if ("unreadable" in hook) {
+      return MAY_OPEN_PR.test(hook.unreadable) ? this.cannotCheck(invocation, "the hook input was not JSON naming a tool_input.command") : Exit.ok;
     }
     const args = prCreateArgs(hook.command);
     if (!args) return Exit.ok;
