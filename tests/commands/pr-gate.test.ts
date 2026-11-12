@@ -153,6 +153,32 @@ test("a heredoc that does not mention a PR is not read as one, and a PR after a 
   }
 });
 
+test("a quoted << or a quoted ) does not hide the command after it", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  for (const command of [
+    // A << inside quotes is text, not a heredoc, so the next line still runs.
+    `echo "<<EOF"\n"$GH" "$P" create`,
+    `echo '<<EOF'\n"$GH" "$P" create`,
+    `echo "<<EOF x"\n"$GH" "$P" create`,
+    `echo '<<EOF x'\n"$GH" "$P" create`,
+    `echo "$(echo "<<EOF")"\n"$GH" "$P" create`,
+    // A ) inside quotes does not end the substitution.
+    `echo "$(echo ")")"; "$GH" "$P" create`,
+    `echo "$(echo ')')"; "$GH" "$P" create`,
+    `echo "$(echo \\))"; "$GH" "$P" create`,
+    `echo "$(echo "$(echo ")")")"; "$GH" "$P" create`,
+    // A delimiter the parser cannot read is not trusted to end a body.
+    `cat <<E-OF\n"$GH" "$P" create`,
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
+  }
+  // Real heredoc bodies stay data, even with quotes and parentheses in them.
+  for (const command of [`git commit -m "$(cat <<'EOF'\nit's ) and "<<x\nEOF\n)"`, `cat <<EOF\n"$GH" "$P" create\nEOF`]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
 test("refuses to open a PR from a branch with no review, and names the branch and the way forward", async (t) => {
   setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
   const repo = await tempRepo({ "a.ts": "x\n" });
