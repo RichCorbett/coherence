@@ -13,7 +13,7 @@ const COULD_BE_GH = (word: string) => basename(word) === "gh" || COULD_EXPAND(wo
 
 /** Tokens of the raw line, wherever they sit: in quotes, heredoc bodies or substitutions. A hyphen or word character next to one makes it part of another word. */
 const NAMES_PR_CREATE = /(?<![\w-])gh['"\s\\]+pr['"\s\\]+create(?![\w-])/;
-const RUNS_TEXT = /(?<![\w-])(ba|z|da)?sh\s+-[a-z]*c(?![\w-])/;
+const RUNS_TEXT = /(?<![\w-])(eval|(ba|z|da)?sh\s+-[a-z]*c)(?![\w-])/;
 const NAMES_GH_OR_PR = /(?<![\w-])(gh|pr)(?![\w-])/;
 
 /** A literal word that is not an option, so it is what it reads as. */
@@ -21,11 +21,8 @@ const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && 
 
 /**
  * Whether a line could open a PR, so that it must be exactly `gh pr create` or be refused. Broad on purpose, so it also matches a
- * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or names `gh` or `pr` on a
- * line that runs text as commands: through `sh -c` in the raw text, or through a parsed word that is `eval` or assigns it, as in
- * `x=eval`. `eval` counts only as a parsed word: matched in the raw text, it refused `gh issue close --comment "the eval passed"`
- * (#69). Quoted text naming gh is refused by shellCommands anyway, and text piped or fed to a shell is not seen with or without
- * `eval`. A parsed command matches when `pr` and then `create` follow a word that is or
+ * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or runs text as commands
+ * through `eval` or `sh -c` and names `gh` or `pr`. A parsed command matches when `pr` and then `create` follow a word that is or
  * could become `gh`, such as `g[h]`, or when it starts with `pr`, where a substitution split it from its executable. It also matches
  * a command with a word that is literally `gh`, wherever it sits, or a first word that could become `gh`, and an expandable word
  * after it, unless that gh's subcommand is fixed and is not `pr create`.
@@ -35,13 +32,13 @@ const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && 
  * `gh` word needs no table. Considered and rejected: anchoring on an expandable word in any position, because `ls *.ts *.md` and
  * `cp $SRC $DST` would be refused; only the first word is anchored, which covers `"$GH" "$P" create` and `g[h] "$P" create`.
  * Accepted costs: an expandable executable behind a wrapper (`env $GH "$P" create`) and `$CMD` are not seen; `$EDITOR $FILE` is
- * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused". `eval` built from pieces and run by
- * `command` or `builtin` (`x=ev; command "${x}al" ...`) is not seen, as it was not when the raw text was matched; an `eval` word
- * that is only an argument (`gh issue close --comment eval`) is refused, since telling it apart needs the wrapper table.
+ * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused". So is a gh line whose quoted text
+ * says eval, such as `gh issue close --comment "the eval passed"` (#69); the refusal names eval so the cause can be found.
+ * Considered and rejected for #69: counting `eval` only as a parsed word, or a word assigning it. Dissent found an expansion that
+ * yields eval, `${x:+eval}` as the command or in `x=${y:+eval}; "$x"`, which the raw match refuses and the parsed check let through.
  */
 export function opensPr(raw: string, line: string[][]): boolean {
-  const runsText = RUNS_TEXT.test(raw) || line.some((words) => words.some((word) => word === "eval" || word.endsWith("=eval")));
-  if (NAMES_PR_CREATE.test(raw) || (runsText && NAMES_GH_OR_PR.test(raw))) return true;
+  if (NAMES_PR_CREATE.test(raw) || (RUNS_TEXT.test(raw) && NAMES_GH_OR_PR.test(raw))) return true;
   return line.some((words) => {
     // A gh with an expandable word after it is a candidate unless its subcommand is proven fixed and not `pr create`: an option or
     // an expansion where the subcommand belongs could hide `pr` or `create`, and prOptions then refuses it.
@@ -60,7 +57,7 @@ export function opensPr(raw: string, line: string[][]): boolean {
 const ONE_COMMAND =
   "the line is not exactly one gh pr create command with fixed words. Run gh pr create on its own, from the repo's folder, " +
   "with nothing before gh, no other commands, and no variables, substitutions or wildcards; " +
-  `a --body may be "$(cat <<'EOF' ... EOF)"`;
+  `a --body may be "$(cat <<'EOF' ... EOF)". A line that says eval or sh -c anywhere, even in quoted text, and names gh or pr counts too`;
 
 /** gh pr create's options by short and long name, with the -R it inherits, as `gh pr create --help` lists them on gh 2.103.2. */
 const TAKES_VALUE = new Map([["a", "assignee"], ["B", "base"], ["b", "body"], ["F", "body-file"], ["H", "head"], ["l", "label"], ["m", "milestone"], ["p", "project"], ["r", "reviewer"], ["R", "repo"], ["T", "template"], ["t", "title"]]);

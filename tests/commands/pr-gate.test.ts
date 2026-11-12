@@ -118,18 +118,18 @@ test("gh pr create hidden in a heredoc body, an eval, a nested shell or a substi
   }
 });
 
-test("eval counts only as a command word, so gh lines whose quoted text says eval are let through (#69)", async () => {
+test("eval in any spelling the raw text shows refuses a gh line, and the refusal names eval (#69)", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
-  // The two lines the installed hook refused on 2026-11-12, with only paths shortened.
+  // Each was let through by a parsed-word check tried for #69, which was dropped for it.
   for (const command of [
-    `gh issue close 68 -R RichCorbett/coherence --reason completed --comment "Fixed in a521cb4 on main, the merge of fix/issue-68. Tests, coherence check and the no-shape eval passed before the push." 2>&1 | tail -1; gh issue comment 43 -R RichCorbett/coherence --body-file notes/comment-43.md | tail -1`,
-    `git push origin main 2>&1 | tail -1; for n in 36 46; do gh issue view $n -R RichCorbett/coherence --json state --jq .state | sed "s/^/#$n /"; done; printf -- '- 10:49 EST: #46 doc-only merged (R1 PASS, 2 MED = the stated limit), 164/164, eval 1.0, pushed.\\n' >> WORKLOG.md`,
+    `x=eval; command "$x" "$(printf 'g%s pr create' h)"`,
+    `y=1; x=\${y:+eval}; "$x" "$(printf 'g%s pr create' h)"`,
+    `x=1; \${x:+eval} "$(printf 'g%s pr create' h)"`,
+    // The false refusal this costs: the line the installed hook refused on 2026-11-12 at 10:38 EST.
+    `gh issue close 68 -R RichCorbett/coherence --comment "Tests, coherence check and the no-shape eval passed before the push." 2>&1 | tail -1`,
   ]) {
-    assert.deepEqual(await runHook(repo.root, command), [], command);
-  }
-  for (const command of [`command eval "$(printf 'g%s pr create' h)"`, `e''val "$(printf 'g%s pr create' h)"`, `X=$(eval "$(printf 'g%s pr create' h)")`, `echo "eval passed" && eval "$(printf 'g%s pr create' h)"`, `x=eval; command "$x" "$(printf 'g%s pr create' h)"`]) {
-    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command.*says eval or sh -c anywhere/, command);
   }
 });
 
