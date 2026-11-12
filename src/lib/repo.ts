@@ -9,6 +9,10 @@ const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
 // A folder in the repo under review can pose as a repository of its own, and its config can name a command for git to run.
 const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"];
 
+function handWritten(paths: string[]): string[] {
+  return paths.filter((path) => SOURCE_FILE.test(path) && !NOT_HAND_WRITTEN.test(path));
+}
+
 export function git(args: string[], cwd: string): Promise<ProcessResult> {
   return runProcess("git", [...REFUSE_PLANTED_REPOSITORIES, ...args], cwd);
 }
@@ -47,8 +51,14 @@ export class Repo {
 
   async sourceFiles(): Promise<string[]> {
     // Untracked files count too: the checks run when code is written, usually before `git add`. Ignored files stay out.
-    const files = await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
-    return files.filter((path) => SOURCE_FILE.test(path) && !NOT_HAND_WRITTEN.test(path));
+    return handWritten(await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
+  }
+
+  /** The source files at the commit where the branch left `base`. */
+  async sourceFilesAtBranchPoint(base: string): Promise<string[]> {
+    const point = await git(["merge-base", "--end-of-options", base, "HEAD"], this.root);
+    if (point.code !== 0) throw new Error(`no common commit with ${base}: ${firstLine(point.stderr)}`);
+    return handWritten(await this.gitPaths(["ls-tree", "-r", "-z", "--name-only", "--end-of-options", point.stdout.trim()]));
   }
 
   /** Files changed since the branch left `base`; deleted files have nothing left to check. */

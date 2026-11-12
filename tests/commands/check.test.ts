@@ -59,6 +59,20 @@ test("with --base, still reports a folder the branch added to", async () => {
   assert.ok(invocation.printed.some((line) => line.startsWith("src [flat-folder]")));
 });
 
+test("with --base, an edit in an already crowded folder is not the branch's crowding", async () => {
+  const crowded = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`src/f${i}.ts`, "x\n"]));
+  const repo = await tempRepo(crowded);
+  await commitBranchChange(repo.root, { "src/f0.ts": "y\n" });
+  assert.equal(await new CheckCommand().execute(fakeInvocation(repo.root, ["--base", "main"])), Exit.ok);
+});
+
+test("with --base, a folder the branch grew while over the limit is reported", async () => {
+  const crowded = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`src/f${i}.ts`, "x\n"]));
+  const repo = await tempRepo(crowded);
+  await commitBranchChange(repo.root, { "src/one-more.ts": "x\n" });
+  assert.equal(await new CheckCommand().execute(fakeInvocation(repo.root, ["--base", "main"])), Exit.findings);
+});
+
 /** A package claiming to be the pinned tool, which leaves a file behind in the repo if it is ever run. */
 function plantedTool(name: string, version: string) {
   return {
