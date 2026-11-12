@@ -26,7 +26,8 @@ export class CheckCommand extends BaseCommand {
     let findings = (await Promise.all(CHECKS.map((check) => check.run(repo)))).flat();
     if (base) {
       const changed = await repo.changedFiles(base);
-      findings = findings.filter((finding) => isInBranchChange(finding, changed));
+      const [before, after] = [await repo.sourceFilesAtBranchPoint(base), await repo.sourceFiles()];
+      findings = findings.filter((finding) => isInBranchChange(finding, changed, (folder) => filesIn(after, folder) > filesIn(before, folder)));
     }
 
     for (const finding of findings) invocation.print(describe(finding));
@@ -40,11 +41,15 @@ function describe(finding: Finding): string {
   return `${place} [${finding.check}] ${finding.message}`;
 }
 
-function isInBranchChange(finding: Finding, changed: string[]): boolean {
+function filesIn(paths: string[], folder: string): number {
+  return paths.filter((path) => dirname(path) === folder).length;
+}
+
+function isInBranchChange(finding: Finding, changed: string[], folderGrew: (folder: string) => boolean): boolean {
   switch (finding.scope) {
     case "file":
       return changed.includes(finding.path);
     case "folder":
-      return changed.some((path) => dirname(path) === finding.path);
+      return folderGrew(finding.path);
   }
 }

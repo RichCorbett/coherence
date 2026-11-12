@@ -1,6 +1,6 @@
 import type { Repo } from "./repo.ts";
 
-/** What a finding is about, which decides when a branch is answerable for it: the file changed, or a file directly in the folder changed. */
+/** What a finding is about, which decides when a branch is answerable for it: the file changed, or the folder holds more source files than where the branch began. */
 export type Scope = "file" | "folder";
 
 /** `path` is always relative to the repo root, whatever tool found the problem. */
