@@ -22,6 +22,10 @@ function passOptions(args: string[]): PassOptions | string {
   }
 }
 
+// Claude Code lets the command run when the hook passes its 30-second timeout, so the gate decides within 20 seconds
+// whatever stalls, the hook's stdin or git, and past that refuses. The other 10 cover node starting and main.ts exiting.
+export const HOOK_DEADLINE_MS = 20_000;
+
 const UNREADABLE_HOOK =
   "coherence pr-gate could not read the hook input, so it cannot tell whether this command opens a PR. " +
   "Claude Code's hook format may have changed: update or disable the coherence plugin.";
@@ -35,9 +39,12 @@ export class PrGateCommand extends BaseCommand {
   /** The `check` command, which `pass` runs again before recording. Commands may not import each other, so main.ts hands it over. */
   private readonly check: BaseCommand;
 
-  constructor(check: BaseCommand) {
+  private readonly deadlineMs: number;
+
+  constructor(check: BaseCommand, deadlineMs = HOOK_DEADLINE_MS) {
     super();
     this.check = check;
+    this.deadlineMs = deadlineMs;
   }
 
   async execute(invocation: Invocation): Promise<number> {
@@ -45,6 +52,25 @@ export class PrGateCommand extends BaseCommand {
     if (verb === "pass") return this.pass(invocation);
     if (verb !== undefined) return this.refuse(invocation);
 
+    // Past the deadline the hook has answered, so a late decision must not print a second answer.
+    let late = false;
+    const guarded: Invocation = { ...invocation, print: (line) => late || invocation.print(line) };
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<number>((resolve) => {
+      timer = setTimeout(() => {
+        late = true;
+        resolve(this.cannotCheck(invocation, `deciding took longer than ${this.deadlineMs / 1000} seconds`));
+      }, this.deadlineMs);
+    });
+    try {
+      return await Promise.race([this.decide(guarded), deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** The hook's answer for the Bash line on stdin: silence lets it run, a printed deny refuses it. */
+  private async decide(invocation: Invocation): Promise<number> {
     // Stdin that cannot be read is input the gate cannot read, so it is refused the same way.
     const hook = hookInput(await invocation.readStdin().catch(() => ""));
     // Claude Code always sends this, so input without it means the hook protocol changed; guessing at it would let PRs through.

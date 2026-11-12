@@ -31,3 +31,9 @@ try {
   invocation.printError(`coherence ${command.name}: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = Exit.failed;
 }
+
+// A command can return while a program it started still runs, as the PR hook does past its deadline.
+// Exit once the output is written, rather than wait for that program.
+await new Promise((resolve) => process.stdout.write("", resolve));
+await new Promise((resolve) => process.stderr.write("", resolve));
+process.exit();

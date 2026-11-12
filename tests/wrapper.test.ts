@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { chmodSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -116,6 +117,23 @@ test("a git that cannot run, as Apple's /usr/bin/git inside the eval sandbox, do
     const { code, err } = run(path, [command]);
     assert.deepEqual({ code, err }, { code: Exit.ok, err: "" }, command);
   }
+});
+
+test("a hook whose stdin never closes refuses by its deadline and exits, inside the hook's 30-second timeout", async () => {
+  const env = { PATH: pathWith({ node: "real", git: "real" }), HOME: tempFolder() };
+  const started = Date.now();
+  const child = spawn(WRAPPER, ["pr-gate"], { env, stdio: ["pipe", "pipe", "pipe"] });
+  child.stdin.write('{"tool_name":"Bash"'); // and never ends it
+  // Standing in for Claude Code's 30-second timeout, so a hook that never exits fails this test instead of hanging the suite.
+  const hookTimeout = setTimeout(() => child.kill("SIGKILL"), 25_000);
+  let out = "";
+  child.stdout.on("data", (chunk) => (out += chunk));
+  const [code] = await once(child, "exit");
+  clearTimeout(hookTimeout);
+  child.stdin.destroy();
+  assert.equal(code, Exit.ok);
+  assert.match(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /deciding took longer than 20 seconds/);
+  assert.ok(Date.now() - started < 25_000, `took ${Date.now() - started} ms`);
 });
 
 test("with node and git working, the wrapper starts the command and hands it the hook's input", () => {

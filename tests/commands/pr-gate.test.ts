@@ -705,6 +705,18 @@ test("hook input that cannot be read from stdin at all is refused as unreadable"
   assert.match(refusal(invocation.printed), /^coherence pr-gate could not read the hook input/);
 });
 
+test("a hook that cannot decide by its deadline refuses, and a late decision prints no second answer", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  const invocation = fakeInvocation(repo.root);
+  const stdin = JSON.stringify({ cwd: repo.root, tool_name: "Bash", tool_input: { command: "gh pr create --fill" } });
+  // Arrives after the deadline, and would be refused as unreviewed if it were still read.
+  invocation.readStdin = () => new Promise((resolve) => setTimeout(() => resolve(stdin), 400));
+  assert.equal(await new PrGateCommand(new CheckCommand(), 100).execute(invocation), Exit.ok);
+  assert.match(refusal(invocation.printed), /could not check it: deciding took longer than 0.1 seconds/);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.equal(invocation.printed.length, 1, invocation.printed.join("\n"));
+});
+
 test("a PR for a named branch that has no local commit here is refused, and says to check out or fetch it", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   for (const head of ["someone:their-branch", "not-fetched"]) {
