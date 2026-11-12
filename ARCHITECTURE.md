@@ -62,4 +62,5 @@ preference isn't already known, and runs `coherence taste add` with one general 
 update. The next `coherence taste` prints the shipped style, then the condensed rules, then the log, and that is what
 the reviewer reads. At 40 entries the command says the log is full, and the skill writes new rules from
 the old rules and the entries. `coherence taste condense` replaces `taste-rules.md` and moves the entries to
-`taste-archive.md`.
+`taste-archive.md`, after saving the previous rules and entries as `taste-rules.prev.md` and `taste-log.prev.md`;
+`coherence taste uncondense` restores them and takes the entries back off the archive.

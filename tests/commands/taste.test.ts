@@ -74,6 +74,40 @@ test("condense replaces the rules, archives the entries, and the rules read befo
   assert.match(shown.printed[0], /^one voice\n\n## Rules condensed so far\n\n- plain functions first\n\n## Entries not yet condensed\n\n- \S+ newer$/);
 });
 
+test("uncondense puts back the earlier rules and entries, keeps newer ones, and leaves the archive without duplicates", async (t) => {
+  const log = isolated(t);
+  const folder = dirname(log);
+  const command = new TasteCommand();
+  await command.execute(fakeInvocation(process.cwd(), ["add", "first"]));
+  await command.execute(fakeInvocation(process.cwd(), ["condense"], "- rules one\n"));
+  await command.execute(fakeInvocation(process.cwd(), ["add", "second"]));
+  const archivedOnce = readFileSync(join(folder, "taste-archive.md"), "utf8");
+  await command.execute(fakeInvocation(process.cwd(), ["condense"], "- rules two\n"));
+
+  const undone = fakeInvocation(process.cwd(), ["uncondense"]);
+  assert.equal(await command.execute(undone), Exit.ok);
+  assert.match(undone.printed[0], /^restored the earlier rules and 1 entries$/);
+  assert.equal(readFileSync(join(folder, "taste-rules.md"), "utf8"), "- rules one\n");
+  assert.match(readFileSync(log, "utf8"), /^- \S+ second\n$/);
+  assert.equal(readFileSync(join(folder, "taste-archive.md"), "utf8"), archivedOnce);
+
+  const again = fakeInvocation(process.cwd(), ["uncondense"]);
+  await command.execute(again);
+  assert.deepEqual(again.printed, ["nothing to uncondense"]);
+});
+
+test("uncondense of the first condense removes the rules it made, and keeps entries added since", async (t) => {
+  const log = isolated(t);
+  const command = new TasteCommand();
+  await command.execute(fakeInvocation(process.cwd(), ["add", "old"]));
+  await command.execute(fakeInvocation(process.cwd(), ["condense"], "- rules\n"));
+  await command.execute(fakeInvocation(process.cwd(), ["add", "new"]));
+  await command.execute(fakeInvocation(process.cwd(), ["uncondense"]));
+
+  assert.equal(existsSync(join(dirname(log), "taste-rules.md")), false);
+  assert.match(readFileSync(log, "utf8"), /^- \S+ old\n- \S+ new\n$/);
+});
+
 test("an unknown verb, an empty preference, or empty rules prints the usage and exits 2", async (t) => {
   isolated(t);
   for (const args of [["maybe", "x"], ["add"], ["condense"]]) {

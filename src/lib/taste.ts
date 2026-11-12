@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { readPluginFile } from "./plugin-files.ts";
@@ -37,10 +37,30 @@ export async function undoLastTaste(): Promise<string | undefined> {
 export async function condenseTaste(rules: string): Promise<number> {
   await mkdir(dirname(logPath()), { recursive: true });
   const entries = await readEntries();
+  // The rewrite is lossy, so keep what it replaces for `uncondense`. Only the latest condense can be taken back.
+  await rm(prevRulesPath(), { force: true });
+  if (existsSync(rulesPath())) await copyFile(rulesPath(), prevRulesPath());
+  await writeFile(prevLogPath(), asLines(entries));
   // In this order so a crash can leave an entry in two places but never lose a preference.
   await writeFile(rulesPath(), `${rules.trim()}\n`);
   await appendFile(archivePath(), asLines(entries));
   await rm(logPath(), { force: true });
+  return entries.length;
+}
+
+/** Puts back the rules and entries the last condense replaced and returns how many entries, or undefined when there is nothing to put back. */
+export async function uncondenseTaste(): Promise<number | undefined> {
+  if (!existsSync(prevLogPath())) return undefined;
+  const entries = (await readFile(prevLogPath(), "utf8")).split("\n").filter(Boolean);
+  if (existsSync(prevRulesPath())) await copyFile(prevRulesPath(), rulesPath());
+  else await rm(rulesPath(), { force: true });
+  // Entries recorded since the condense stay, after the restored ones.
+  await writeFile(logPath(), asLines([...entries, ...(await readEntries())]));
+  // Those entries were appended last, so they come off the archive's tail and are not archived twice.
+  const archived = existsSync(archivePath()) ? await readFile(archivePath(), "utf8") : "";
+  if (archived.endsWith(asLines(entries))) await writeFile(archivePath(), archived.slice(0, archived.length - asLines(entries).length));
+  await rm(prevLogPath(), { force: true });
+  await rm(prevRulesPath(), { force: true });
   return entries.length;
 }
 
@@ -59,6 +79,14 @@ function logPath(): string {
 
 function rulesPath(): string {
   return configFile("taste-rules.md");
+}
+
+function prevRulesPath(): string {
+  return configFile("taste-rules.prev.md");
+}
+
+function prevLogPath(): string {
+  return configFile("taste-log.prev.md");
 }
 
 function archivePath(): string {
