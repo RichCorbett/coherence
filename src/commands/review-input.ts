@@ -5,7 +5,7 @@ import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { readPluginFile } from "../lib/plugin-files.ts";
 import { makeCacheFolder, pruneCacheFolders } from "../lib/process.ts";
 import { Repo } from "../lib/repo.ts";
-import { readTaste } from "../lib/taste.ts";
+import { readNewTaste, readTaste } from "../lib/taste.ts";
 
 // Past either limit the diff would crowd the reader's prompt, so it gets a file to read in chunks instead.
 const PASTE_LIMIT_LINES = 3000;
@@ -40,6 +40,9 @@ export class ReviewInputCommand extends BaseCommand {
     if (patchFile) header.push(`The full diff is ${patchLines} lines, too long to paste (over ${PASTE_LIMIT_LINES} lines or ${PASTE_LIMIT_BYTES / 1024} KB). Read it in chunks from ${patchFile}`);
     invocation.print(header.join("\n"));
     invocation.print(`=== OWNER TASTE ===\n${(await readTaste()).trimEnd()}`);
+    const fresh = await readNewTaste();
+    const since = fresh.since === undefined ? "no previous review is recorded, so this is every entry" : `dated ${fresh.since} or later, the day of the previous review`;
+    invocation.print(`=== NEW TASTE (${since}) ===\n${fresh.entries.length > 0 ? fresh.entries.join("\n") : "none"}`);
     invocation.print(`=== DESIGN RULES ===\n${(await readPluginFile("rules/design.md")).trimEnd()}`);
     if (baseId === undefined || patch === undefined) {
       invocation.print("=== NO DIFF ===\nReview the whole repository.");

@@ -18,6 +18,24 @@ export async function readTaste(): Promise<string> {
   return `${parts.join("\n\n")}\n`;
 }
 
+/**
+ * The entries dated on or after the day of the previous review, from the log and the archive, so condensing cannot hide one.
+ * `since` is undefined when no review has been recorded, and then every entry counts. Entries carry a day, not a time, so
+ * ones from the day of the last review show again: that errs toward showing the owner a line twice, never toward missing one.
+ */
+export async function readNewTaste(): Promise<{ since?: string; entries: string[] }> {
+  const since = existsSync(seenPath()) ? (await readFile(seenPath(), "utf8")).trim() : undefined;
+  const all = [...(await readLines(archivePath())), ...(await readEntries())];
+  // The date is YYYY-MM-DD, so comparing text compares days.
+  return { since, entries: all.filter((entry) => since === undefined || entry.slice(2, 12) >= since) };
+}
+
+/** Records today as the day of the latest review, in the same UTC form the entries carry. */
+export async function markTasteSeen(): Promise<void> {
+  await mkdir(dirname(seenPath()), { recursive: true });
+  await writeFile(seenPath(), `${new Date().toISOString().slice(0, 10)}\n`);
+}
+
 /** Records one preference as a dated entry and returns how many entries now wait to be condensed. */
 export async function appendTaste(preference: string): Promise<number> {
   // The log is one entry per line and is printed under headings: a line break would forge entries or headings,
@@ -61,8 +79,12 @@ async function backUpRules(): Promise<void> {
 }
 
 async function readEntries(): Promise<string[]> {
-  if (!existsSync(logPath())) return [];
-  return (await readFile(logPath(), "utf8")).split("\n").filter(Boolean);
+  return readLines(logPath());
+}
+
+async function readLines(path: string): Promise<string[]> {
+  if (!existsSync(path)) return [];
+  return (await readFile(path, "utf8")).split("\n").filter(Boolean);
 }
 
 function asLines(entries: string[]): string {
@@ -75,6 +97,10 @@ function logPath(): string {
 
 function rulesPath(): string {
   return configFile("taste-rules.md");
+}
+
+function seenPath(): string {
+  return configFile("taste-last-review");
 }
 
 function archivePath(): string {
