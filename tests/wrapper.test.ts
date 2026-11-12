@@ -58,9 +58,6 @@ const SETUPS: Record<string, { tools: Record<string, Kind>; missing: RegExp }> =
   "node is absent": { tools: { node: "absent", git: "real" }, missing: /node is not on PATH/ },
   "node cannot run TypeScript": { tools: { node: "broken", git: "real" }, missing: /cannot run TypeScript/ },
   "node hangs": { tools: { node: "hangs", git: "real" }, missing: /node did not answer within/ },
-  "git does not run": { tools: { node: "real", git: "broken" }, missing: /git does not run/ },
-  "git is absent": { tools: { node: "real", git: "absent" }, missing: /git does not run/ },
-  "git hangs": { tools: { node: "real", git: "hangs" }, missing: /git did not answer within/ },
 };
 
 for (const [setup, { tools, missing }] of Object.entries(SETUPS)) {
@@ -112,8 +109,9 @@ for (const [grep, how] of [["absent", "is absent"], ["fails", "fails"]] as const
   });
 }
 
-test("taste and rules, which never call git, run without it", () => {
-  const path = pathWith({ node: "real", git: "absent" });
+test("a git that cannot run, as Apple's /usr/bin/git inside the eval sandbox, does not stop the wrapper", () => {
+  const path = pathWith({ node: "real", git: "broken" });
+  assert.deepEqual(hook(path, "gh pr list"), { code: Exit.ok, out: "", err: "" });
   for (const command of ["taste", "rules"]) {
     const { code, err } = run(path, [command]);
     assert.deepEqual({ code, err }, { code: Exit.ok, err: "" }, command);
