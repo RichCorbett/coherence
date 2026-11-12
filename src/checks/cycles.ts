@@ -1,5 +1,7 @@
+import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
-import { runPinnedTool, runProcess } from "../lib/process.ts";
+import { runPinnedTool, runProcess, withTempFolder } from "../lib/process.ts";
 import { NOT_HAND_WRITTEN, type Repo } from "../lib/repo.ts";
 
 const SCRIPT_EXTENSIONS = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
@@ -20,8 +22,10 @@ export class CyclesCheck extends BaseCheck {
     // madge exits 1 when it finds cycles, so only a missing JSON answer means it failed.
     // --basedir makes madge name files relative to the repo root.
     const targets = await madgeTargets(repo, files);
-    const args = [...MADGE_ARGS, "--basedir", repo.root, "--extensions", SCRIPT_EXTENSIONS.join(","), "--exclude", NOT_HAND_WRITTEN.source, ...targets];
-    const result = await runPinnedTool(MADGE, args);
+    const result = await withTempFolder(async (folder) => {
+      const options = ["--extensions", SCRIPT_EXTENSIONS.join(","), "--exclude", NOT_HAND_WRITTEN.source, ...(await aliasConfig(repo, folder))];
+      return runPinnedTool(MADGE, [...MADGE_ARGS, "--basedir", repo.root, ...options, ...targets]);
+    });
     let cycles: string[][];
     try {
       cycles = JSON.parse(result.stdout);
@@ -50,4 +54,47 @@ export async function madgeTargets(repo: Repo, files: string[], budget?: number)
   const paths = files.map((path) => repo.absolutePath(path));
   // Each argument also costs its terminating NUL and a pointer.
   return paths.reduce((total, path) => total + Buffer.byteLength(path) + 9, 0) > budget ? [repo.root] : paths;
+}
+
+// Without the repo's aliases, madge cannot resolve an import through a tsconfig `paths` entry, so a cycle through one goes unreported.
+// The repo's own tsconfig is never handed to madge: its `extends`, and `paths` targets that are absolute or use `..`, would make madge
+// read files outside the repo. Instead madge gets a generated tsconfig in a folder of ours, holding only `baseUrl` and the `paths`
+// targets that stay inside the repo. A tsconfig with comments or trailing commas is not plain JSON and is treated as having no aliases.
+async function aliasConfig(repo: Repo, folder: string): Promise<string[]> {
+  const path = repo.absolutePath("tsconfig.json");
+  if (!(await lstat(path).catch(() => undefined))?.isFile()) return [];
+  let options: { baseUrl?: unknown; paths?: unknown };
+  try {
+    options = JSON.parse(await readFile(path, "utf8")).compilerOptions ?? {};
+  } catch {
+    return [];
+  }
+  const root = await realpath(repo.root);
+  const baseUrl = resolve(repo.root, typeof options.baseUrl === "string" ? options.baseUrl : ".");
+  if (!(await isInside(root, baseUrl)) || typeof options.paths !== "object" || options.paths === null) return [];
+  const paths: Record<string, string[]> = {};
+  for (const [alias, targets] of Object.entries(options.paths)) {
+    // All or nothing: dropping only some targets could make TypeScript resolve the alias to a different file.
+    if (!Array.isArray(targets) || targets.length === 0) continue;
+    const inside = await Promise.all(targets.map(async (target) => typeof target === "string" && (await isInside(root, resolve(baseUrl, target)))));
+    if (inside.every(Boolean)) paths[alias] = targets;
+  }
+  const generated = join(folder, "tsconfig.json");
+  await writeFile(generated, JSON.stringify({ compilerOptions: { baseUrl, paths } }));
+  return ["--ts-config", generated];
+}
+
+/** Whether `path`, with symlinks resolved, is inside `root`, which must already be a real path. Only the part before a `*` is real, and the part that does not exist yet cannot lead anywhere. */
+async function isInside(root: string, path: string): Promise<boolean> {
+  let existing = path.split("*")[0];
+  for (;;) {
+    try {
+      const from = relative(root, await realpath(existing));
+      return from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from);
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return false;
+      existing = parent;
+    }
+  }
 }
