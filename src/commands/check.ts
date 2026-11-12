@@ -2,6 +2,7 @@ import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import type { BaseCheck, Finding } from "../lib/base-check.ts";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
+import { stopRunning } from "../lib/process.ts";
 import { Repo } from "../lib/repo.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
@@ -18,12 +19,26 @@ export class CheckCommand extends BaseCommand {
   readonly name = "check";
   readonly usage = "coherence check [--base <ref>]";
 
+  private readonly checks: BaseCheck[];
+
+  constructor(checks = CHECKS) {
+    super();
+    this.checks = checks;
+  }
+
   async execute(invocation: Invocation): Promise<number> {
     const { values } = parseArgs({ args: invocation.args, options: { base: { type: "string" } } });
     const base = values.base;
     const repo = await Repo.open(invocation.cwd);
 
-    let findings = (await Promise.all(CHECKS.map((check) => check.run(repo)))).flat();
+    let findings: Finding[];
+    try {
+      findings = (await Promise.all(this.checks.map((check) => check.run(repo)))).flat();
+    } catch (error) {
+      // Promise.all returns at the first failure and leaves the other checks' programs running; stop them, since the run has failed.
+      stopRunning();
+      throw error;
+    }
     if (base) {
       const changed = await repo.changedFiles(base);
       findings = findings.filter((finding) => isInBranchChange(finding, changed));

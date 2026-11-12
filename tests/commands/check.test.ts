@@ -3,7 +3,9 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, symlinkSync } from "node
 import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
+import { BaseCheck, type Finding } from "../../src/lib/base-check.ts";
 import { Exit } from "../../src/lib/base-command.ts";
+import { runProcess } from "../../src/lib/process.ts";
 import { writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
@@ -85,4 +87,27 @@ test("a --base that looks like a git option is read as a ref, so it cannot write
   const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
   await assert.rejects(new CheckCommand().execute(fakeInvocation(repo.root, ["--base=--output=WRITTEN"])));
   assert.equal(existsSync(join(repo.root, "WRITTEN...HEAD")), false);
+});
+
+class StubCheck extends BaseCheck {
+  readonly name: string;
+  readonly run: () => Promise<Finding[]>;
+
+  constructor(name: string, run: () => Promise<Finding[]>) {
+    super();
+    this.name = name;
+    this.run = run;
+  }
+}
+
+test("when one check fails, the programs the other checks started are stopped", async () => {
+  const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
+  // Exits by itself after 3s, so a missing stop fails this test instead of hanging the run.
+  const slow = runProcess(process.execPath, ["-e", "setTimeout(() => process.exit(0), 3000);"], repo.root);
+  const checks: BaseCheck[] = [new StubCheck("slow", () => slow.then(() => [])), new StubCheck("broken", () => Promise.reject(new Error("tool failed")))];
+
+  const started = Date.now();
+  await assert.rejects(new CheckCommand(checks).execute(fakeInvocation(repo.root)), { message: "tool failed" });
+  await assert.rejects(slow);
+  assert.ok(Date.now() - started < 2500, "the slow program ran to its end");
 });
