@@ -19,6 +19,9 @@ export async function readTaste(): Promise<string> {
 
 /** Records one preference as a dated entry and returns how many entries now wait to be condensed. */
 export async function appendTaste(preference: string): Promise<number> {
+  // The log is one entry per line and is printed under headings: a line break would forge entries or headings,
+  // and an escape sequence would act on the terminal that later prints it.
+  if (/[\p{Cc}\u2028\u2029]/u.test(preference)) throw new Error("a preference is one line of plain text: no line breaks or control characters");
   await mkdir(dirname(logPath()), { recursive: true });
   const today = new Date().toISOString().slice(0, 10);
   await appendFile(logPath(), `- ${today} ${preference}\n`);

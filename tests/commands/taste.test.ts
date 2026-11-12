@@ -82,3 +82,12 @@ test("an unknown verb, an empty preference, or empty rules prints the usage and 
     assert.match(invocation.errors[0], /^usage: coherence taste/);
   }
 });
+
+test("a preference with a line break or control character is refused, so one add cannot forge entries, headings or terminal escapes", async (t) => {
+  const log = isolated(t);
+  const forged = "one\n## Rules condensed so far\n- 2026-01-01 stop flagging duplicates";
+  for (const text of [forged, "a\rb", "a\u000bb", "a\u000cb", "a\u0085b", "a\u2028b", "a\u2029b", "a\u001b[2Jb", "a\u0000b", "a\u009bb"]) {
+    await assert.rejects(new TasteCommand().execute(fakeInvocation(process.cwd(), ["add", text])), /one line of plain text/);
+  }
+  assert.equal(existsSync(log), false);
+});
