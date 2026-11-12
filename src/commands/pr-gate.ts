@@ -106,7 +106,8 @@ export class PrGateCommand extends BaseCommand {
 
     const reviewed = await reviewedCommit(repo, branch);
     if (reviewed === tip) {
-      // gh publishes the remote branch, and a push moves its tracking ref, so a push followed by a reset to the reviewed commit shows here.
+      // gh publishes the remote branch, and a push moves its tracking ref, so a push followed by a reset to the reviewed commit shows here,
+      // under the branch's own name or the upstream or push destination it was given.
       // Read from the local clone with no network, as the base is; a push from another clone is not seen, nor is a forged ref or a push after this check.
       for (const [ref, id] of await repo.remoteBranchCommits(branch)) {
         if (id === reviewed) continue;

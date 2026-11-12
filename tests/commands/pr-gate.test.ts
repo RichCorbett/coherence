@@ -900,6 +900,10 @@ test("a reviewed branch opens whether it was never pushed or pushed as reviewed"
   assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
   git(repo.root, "push", "-q", "origin", "feature");
   assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
+  // `simple` names no push destination for an upstream of another name; the upstream on the same remote is enough.
+  git(repo.root, "config", "push.default", "simple");
+  git(repo.root, "push", "-q", "-u", "origin", "feature:pr-head");
+  assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
 });
 
 test("an unreviewed commit pushed and then reset away is refused, naming the remote ref", async () => {
@@ -914,4 +918,34 @@ test("an unreviewed commit pushed and then reset away is refused, naming the rem
   const reason = JSON.parse((await runHook(repo.root, "gh pr create --fill"))[0]).hookSpecificOutput.permissionDecisionReason;
   assert.match(reason, new RegExp(`refs/remotes/origin/feature is ${pushed.slice(0, 8)}, not the reviewed ${reviewed.slice(0, 8)}`));
   assert.match(reason, /on what was pushed/);
+});
+
+test("an unreviewed commit pushed under another name is refused, through the upstream or the push destination", async () => {
+  // `git push -u origin feature:pr-head` names it as the upstream; a push refspec names it as the push destination only.
+  for (const [setup, push, ref] of [
+    [["push", "-q", "-u", "origin", "feature:pr-head"], ["origin", "feature:pr-head"], "refs/remotes/origin/pr-head"],
+    [["config", "remote.origin.push", "refs/heads/feature:refs/heads/pushed"], ["origin"], "refs/remotes/origin/pushed"],
+  ] as const) {
+    const { repo, reviewed } = await reviewedWithOrigin();
+    git(repo.root, "config", "push.default", "simple");
+    git(repo.root, ...setup);
+    git(repo.root, "commit", "-q", "--allow-empty", "-m", "unreviewed");
+    git(repo.root, "push", "-q", ...push);
+    const pushed = git(repo.root, "rev-parse", "HEAD");
+    git(repo.root, "reset", "-q", "--hard", reviewed);
+    assert.equal(git(repo.root, "for-each-ref", "--format=%(refname)", "refs/remotes/*/feature"), "", ref);
+
+    const reason = refusal(await runHook(repo.root, "gh pr create --fill"));
+    assert.match(reason, new RegExp(`${ref} is ${pushed.slice(0, 8)}, not the reviewed ${reviewed.slice(0, 8)}`), ref);
+  }
+});
+
+test("a branch that pushes to a remote with no tracking ref for it is refused, since what was pushed there cannot be seen", async () => {
+  const { repo } = await reviewedWithOrigin();
+  git(repo.root, "remote", "add", "backup", tempFolder());
+  git(repo.root, "config", "--unset", "remote.backup.fetch");
+  git(repo.root, "config", "branch.feature.pushRemote", "backup");
+
+  const reason = refusal(await runHook(repo.root, "gh pr create --fill"));
+  assert.match(reason, /could not check it: branch feature pushes to backup, which keeps no remote-tracking ref for it here/);
 });
