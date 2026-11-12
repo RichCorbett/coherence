@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CyclesCheck } from "../../src/checks/cycles.ts";
+import { CyclesCheck, madgeTargets } from "../../src/checks/cycles.ts";
+import { filesPastArgMax, writeFiles } from "../helpers/sandbox.ts";
 import { tempRepo } from "../helpers/temp-repo.ts";
 
 const A_IMPORTS_B = 'import { b } from "./b.ts";\nexport const a = b;\n';
@@ -34,4 +35,24 @@ test("passes imports that point one way, and a repo with no script files", async
   const oneWay = await tempRepo({ "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": "export const b = 1;\n" });
   assert.deepEqual(await new CyclesCheck().run(oneWay), []);
   assert.deepEqual(await new CyclesCheck().run(await tempRepo({ "notes.md": "hi\n" })), []);
+});
+
+test("runs on a repo with more files than fit on one command line, reporting only cycles in files it checks", { timeout: 120_000 }, async () => {
+  const repo = await tempRepo({ ...filesPastArgMax(), ".gitignore": "out/\n", "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": B_IMPORTS_A });
+  writeFiles(repo.root, { "out/a.ts": A_IMPORTS_B, "out/b.ts": B_IMPORTS_A, "vendor/a.ts": A_IMPORTS_B, "vendor/b.ts": B_IMPORTS_A });
+  assert.deepEqual((await new CyclesCheck().run(repo)).map((finding) => finding.path).sort(), ["src/x/a.ts", "src/x/b.ts"]);
+});
+
+test("hands madge each file while they fit the budget, and the repo root when they do not", async () => {
+  const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n", "src/b.ts": "export const b = 1;\n" });
+  assert.deepEqual(await madgeTargets(repo, ["src/a.ts", "src/b.ts"], 1000), [repo.absolutePath("src/a.ts"), repo.absolutePath("src/b.ts")]);
+  assert.deepEqual(await madgeTargets(repo, ["src/a.ts", "src/b.ts"], 10), [repo.root]);
+});
+
+test("the argument budget counts the bytes exec passes, not characters, so multibyte paths cannot slip past it", async () => {
+  const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n" });
+  const name = "src/" + "文".repeat(100) + ".ts";
+  const path = repo.absolutePath(name);
+  const budget = path.length + 9 + 50; // fits in characters, not in UTF-8 bytes
+  assert.deepEqual(await madgeTargets(repo, [name], budget), [repo.root]);
 });
