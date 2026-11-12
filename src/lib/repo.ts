@@ -112,6 +112,18 @@ export class Repo {
     return result.code === 0 ? result.stdout.trim() : undefined;
   }
 
+  /** Every remote-tracking ref for the branch, as `[ref, commit]`, read from the local clone with no network. */
+  async remoteBranchCommits(branch: string): Promise<[string, string][]> {
+    // A pattern, so the name must be plain: a glob character in it would match other branches.
+    if (!isUsableRef(branch)) throw new Error(`not a usable branch name: ${branch.slice(0, 80)}`);
+    const result = await git(["for-each-ref", "--format=%(refname) %(objectname)", `refs/remotes/*/${branch}`], this.root);
+    if (result.code !== 0) throw new Error(`git for-each-ref failed: ${firstLine(result.stderr)}`);
+    return result.stdout.split("\n").flatMap((line) => {
+      const found = /^(\S+) ([0-9a-f]+)$/.exec(line);
+      return found ? [[found[1], found[2]] as [string, string]] : [];
+    });
+  }
+
   /** The `remote.<name>.gh-resolved` values `gh repo set-default` stores, which steer gh's PRs to the repository they name, as `[remote, value]`. */
   async ghDefaults(): Promise<[string, string][]> {
     const result = await git(["config", "--get-regexp", String.raw`^remote\..*\.gh-resolved$`], this.root);

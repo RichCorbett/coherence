@@ -882,3 +882,36 @@ test("a pass clears every old base value, not only a single one", async () => {
   assert.equal(await pass(repo.root), Exit.ok);
   assert.equal(git(repo.root, "config", "--get-all", "branch.feature.coherence-reviewed-base"), "all");
 });
+
+/** A reviewed `feature` with a bare origin, reached by a real push, so the tracking ref is the one git itself writes. */
+async function reviewedWithOrigin() {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  const origin = tempFolder();
+  git(origin, "init", "-q", "--bare");
+  git(repo.root, "remote", "add", "origin", origin);
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const reviewed = git(repo.root, "rev-parse", "HEAD");
+  await pass(repo.root);
+  return { repo, reviewed };
+}
+
+test("a reviewed branch opens whether it was never pushed or pushed as reviewed", async () => {
+  const { repo } = await reviewedWithOrigin();
+  assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
+  git(repo.root, "push", "-q", "origin", "feature");
+  assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
+});
+
+test("an unreviewed commit pushed and then reset away is refused, naming the remote ref", async () => {
+  const { repo, reviewed } = await reviewedWithOrigin();
+  git(repo.root, "commit", "-q", "--allow-empty", "-m", "unreviewed");
+  const pushed = git(repo.root, "rev-parse", "HEAD");
+  git(repo.root, "push", "-q", "origin", "feature");
+  git(repo.root, "reset", "-q", "--hard", reviewed);
+  assert.equal(git(repo.root, "rev-parse", "feature"), reviewed);
+  assert.equal(await reviewedCommit(repo, "feature"), reviewed);
+
+  const reason = JSON.parse((await runHook(repo.root, "gh pr create --fill"))[0]).hookSpecificOutput.permissionDecisionReason;
+  assert.match(reason, new RegExp(`refs/remotes/origin/feature is ${pushed.slice(0, 8)}, not the reviewed ${reviewed.slice(0, 8)}`));
+  assert.match(reason, /on what was pushed/);
+});
