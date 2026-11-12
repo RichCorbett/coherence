@@ -1,14 +1,25 @@
 import { basename } from "node:path";
 
-/** A heredoc's body is data, and the rest of its first line is still commands, so only the body goes. */
-const HEREDOC = /(?<!<)<<(?!<)-?\s*(['"]?)([A-Za-z_]\w*)\1([^\n]*)(?:\n(?![ \t]*\2(?:\n|$))[^\n]*)*(?:\n[ \t]*\2(?=\n|$))?/g;
+/** `<<` and its delimiter, which must be followed by something that ends the word, so a delimiter this cannot read is never trusted to end a body. */
+const HEREDOC_OPEN = /<<-?[ \t]*(['"]?)([A-Za-z_]\w*)\1(?![^\s;&|()<>])/y;
+
+/** `gh` as a word in any case, as `bin/coherence` reads it when it cannot run. */
+const GH_WORD = /(^|[^A-Za-z0-9_])gh([^A-Za-z0-9_]|$)/i;
+/** What shellCommands answers for a line whose data names gh, so the PR gate sees a PR command it cannot judge and refuses the line. */
+const UNREADABLE = ["gh", "pr", "create"];
 
 const SHELL = /^(ba|z|da)?sh$/;
 const RUNS_NEXT_WORD = /^-[a-z]*c$/;
 
-/** Every command a shell line would run, as words, including those inside substitutions, `sh -c` and `eval`. */
+/**
+ * Every command a shell line would run, as words, including those inside substitutions, `sh -c` and `eval`. Shell syntax is too
+ * varied to be sure where data (quoted text, heredoc bodies) ends, and a command this misreads as data hides in it. Such a command
+ * names gh, perhaps split by quotes or backslashes, so a line whose data does is answered with UNREADABLE. That refuses quoted
+ * text and heredoc bodies that merely mention gh too, which is the price.
+ */
 export function shellCommands(line: string): string[][] {
-  const { commands, substitutions } = parse(line.replace(HEREDOC, "$3"));
+  const { commands, substitutions, data } = parse(line);
+  if (GH_WORD.test(data) || GH_WORD.test(data.replace(/[\\'"]/g, ""))) return [UNREADABLE];
   return [...commands, ...substitutions.flatMap(shellCommands), ...commands.flatMap(wrapped)];
 }
 
@@ -101,17 +112,25 @@ function wrapped(words: string[]): string[][] {
   return evaluated === -1 ? [] : shellCommands(words.slice(evaluated + 1).join(" "));
 }
 
-/** Splits at shell separators and honours quotes, so quoted text stays one word. Substitutions inside double quotes still run, so they are collected. */
-function parse(line: string): { commands: string[][]; substitutions: string[] } {
+/** Splits at shell separators and honours quotes, so quoted text stays one word, and drops heredoc bodies. Substitutions inside double quotes still run, so they are collected. */
+function parse(line: string): { commands: string[][]; substitutions: string[]; data: string } {
   const commands: string[][] = [];
   const substitutions: string[] = [];
   let words: string[] = [];
   let word: string | undefined;
   let quote: string | undefined;
+  const bodies: string[] = [];
+  // Text taken for data: every word that has a quote in it, whole, since a misread quote can pull unquoted text into the word, and heredoc bodies.
+  let data = "";
+  let quoted = false;
 
   const endWord = () => {
-    if (word !== undefined) words.push(word);
+    if (word !== undefined) {
+      words.push(word);
+      if (quoted) data += word + "\n";
+    }
     word = undefined;
+    quoted = false;
   };
   const endCommand = () => {
     endWord();
@@ -134,10 +153,21 @@ function parse(line: string): { commands: string[][]; substitutions: string[] } 
       } else word += char;
     } else if (char === "'" || char === '"') {
       quote = char;
+      quoted = true;
       word ??= "";
     } else if (char === "\\") {
       word = (word ?? "") + (line[++i] ?? "");
+    } else if (heredocAt(line, i)) {
+      // Only here, outside quotes, is `<<` a heredoc. Its body starts after this line and is data, so it is skipped, not parsed.
+      const heredoc = heredocAt(line, i)!;
+      bodies.push(heredoc.delimiter);
+      i = heredoc.end - 1;
     } else if (/[;&|\n()`]/.test(char)) {
+      if (char === "\n" && bodies.length) {
+        const end = heredocBodyEnd(line, i, bodies.shift()!);
+        data += line.slice(i + 1, end) + "\n";
+        i = end;
+      }
       endCommand();
     } else if (/\s/.test(char)) {
       endWord();
@@ -146,7 +176,7 @@ function parse(line: string): { commands: string[][]; substitutions: string[] } 
     }
   }
   endCommand();
-  return { commands, substitutions };
+  return { commands, substitutions, data };
 }
 
 function closingBacktick(line: string, open: number): number {
@@ -154,11 +184,53 @@ function closingBacktick(line: string, open: number): number {
   return end === -1 ? line.length : end;
 }
 
+/** The delimiter of a heredoc opened at `at` and where its operator ends, or undefined when none opens there. `<<<` is a here-string. */
+function heredocAt(line: string, at: number): { delimiter: string; end: number } | undefined {
+  if (!line.startsWith("<<", at) || line[at - 1] === "<" || line[at + 2] === "<") return undefined;
+  HEREDOC_OPEN.lastIndex = at;
+  const open = HEREDOC_OPEN.exec(line);
+  return open ? { delimiter: open[2], end: HEREDOC_OPEN.lastIndex } : undefined;
+}
+
+/** Where the body of a heredoc whose first line ends at `newline` ends: after its first line that is the delimiter, or the end of the line when there is none. */
+function heredocBodyEnd(line: string, newline: number, delimiter: string): number {
+  for (let start = newline + 1; start <= line.length; ) {
+    const next = line.indexOf("\n", start);
+    const end = next === -1 ? line.length : next;
+    if (line.slice(start, end).replace(/^[ \t]+/, "") === delimiter) return end;
+    if (next === -1) return line.length;
+    start = next + 1;
+  }
+  return line.length;
+}
+
+/** Where the `)` that closes the substitution opened before `open` is. Quotes, escapes, comments and heredoc bodies hide parentheses, as in the shell. */
 function closingParen(line: string, open: number): number {
   let depth = 0;
+  const bodies: string[] = [];
   for (let i = open; i < line.length; i++) {
-    if (line[i] === "(") depth++;
-    if (line[i] === ")" && --depth === 0) return i;
+    const char = line[i];
+    if (char === "\\") i++;
+    else if (char === "'") i = closingQuote(line, i, "'");
+    else if (char === '"') i = closingQuote(line, i, '"');
+    else if (char === "#" && /[\s;&|()]/.test(line[i - 1] ?? " ")) i = line.indexOf("\n", i) === -1 ? line.length : line.indexOf("\n", i) - 1;
+    else if (char === "\n" && bodies.length) i = heredocBodyEnd(line, i, bodies.shift()!);
+    else if (heredocAt(line, i)) {
+      const heredoc = heredocAt(line, i)!;
+      bodies.push(heredoc.delimiter);
+      i = heredoc.end - 1;
+    } else if (char === "(") depth++;
+    else if (char === ")" && --depth === 0) return i;
+  }
+  return line.length;
+}
+
+/** Where the quote opened at `open` closes, or the end of the line. In double quotes a `$(` runs commands whose own quotes and parentheses nest. */
+function closingQuote(line: string, open: number, quote: string): number {
+  for (let i = open + 1; i < line.length; i++) {
+    if (line[i] === quote) return i;
+    if (quote === '"' && line[i] === "\\") i++;
+    else if (quote === '"' && line.startsWith("$(", i)) i = closingParen(line, i + 1);
   }
   return line.length;
 }
