@@ -112,6 +112,35 @@ export class Repo {
     return result.code === 0 ? result.stdout.trim() : undefined;
   }
 
+  /**
+   * Every remote-tracking ref for the branch, as `[ref, commit]`, read from the local clone with no network: those of the same
+   * name on each remote, and those its upstream and push destination name, whatever they are called. Throws when the branch
+   * pushes to a remote that git keeps no tracking ref for, since what was pushed there cannot be seen.
+   */
+  async remoteBranchCommits(branch: string): Promise<[string, string][]> {
+    // A pattern, so the name must be plain: a glob character in it would match other branches.
+    if (!isUsableRef(branch)) throw new Error(`not a usable branch name: ${branch.slice(0, 80)}`);
+    const config = await git(["for-each-ref", "--format=%(refname)%00%(upstream)%00%(upstream:remotename)%00%(push)%00%(push:remotename)", `refs/heads/${branch}`], this.root);
+    if (config.code !== 0) throw new Error(`git for-each-ref failed: ${firstLine(config.stderr)}`);
+    const [, upstream = "", upstreamRemote = "", push = "", pushRemote = ""] = config.stdout.split("\n").find((line) => line.startsWith(`refs/heads/${branch}\0`))?.split("\0") ?? [];
+    // git names no push destination when `simple` would refuse the push, which is fine once the upstream on that same remote is known.
+    // Any other remote with none named is one whose pushes leave no trace here. "." is this repository, which publishes nothing.
+    if (pushRemote && pushRemote !== "." && !push && !(pushRemote === upstreamRemote && upstream)) {
+      throw new Error(`branch ${branch} pushes to ${pushRemote.slice(0, 80)}, which keeps no remote-tracking ref for it here, so what was pushed there cannot be seen. Give the branch an upstream on a remote that fetches it (git push -u <remote> ${branch}), then open the PR again`);
+    }
+    // Exact names from the remotes git knows, since a remote's name can hold a slash, which `refs/remotes/*/<branch>` would not match.
+    const remotes = await git(["remote"], this.root);
+    if (remotes.code !== 0) throw new Error(`git remote failed: ${firstLine(remotes.stderr)}`);
+    const wanted = new Set([upstream, push].filter((ref) => ref.startsWith("refs/remotes/")));
+    for (const remote of remotes.stdout.split("\n").filter(Boolean)) wanted.add(`refs/remotes/${remote}/${branch}`);
+    const result = await git(["for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/"], this.root);
+    if (result.code !== 0) throw new Error(`git for-each-ref failed: ${firstLine(result.stderr)}`);
+    return result.stdout.split("\n").flatMap((line) => {
+      const found = /^(\S+) ([0-9a-f]+)$/.exec(line);
+      return found && wanted.has(found[1]) ? [[found[1], found[2]] as [string, string]] : [];
+    });
+  }
+
   /** The `remote.<name>.gh-resolved` values `gh repo set-default` stores, which steer gh's PRs to the repository they name, as `[remote, value]`. */
   async ghDefaults(): Promise<[string, string][]> {
     const result = await git(["config", "--get-regexp", String.raw`^remote\..*\.gh-resolved$`], this.root);
