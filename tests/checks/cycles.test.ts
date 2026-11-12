@@ -143,3 +143,12 @@ test("a symlink inside the repo that leads outside is not followed as a baseUrl 
 test("an alias with one target outside the repo is dropped whole", async () => {
   assert.equal(await aliasThroughLink({ baseUrl: ".", paths: { "@out/*": ["src/lib/*", "vendor/*"] } }), 0);
 });
+
+test("a cycle through a file outside the repo, reached by a relative import, is not reported", async () => {
+  const outside = tempFolder();
+  const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n" });
+  const back = relative(outside, repo.absolutePath("src/a.ts"));
+  writeFileSync(join(outside, "secret.ts"), `import { a } from "${back.startsWith(".") ? back : `./${back}`}";\nexport const s = a;\n`);
+  writeFileSync(repo.absolutePath("src/a.ts"), `import { s } from "${relative(repo.absolutePath("src"), join(outside, "secret.ts"))}";\nexport const a = s;\n`);
+  assert.deepEqual(await new CyclesCheck().run(repo), []);
+});

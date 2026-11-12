@@ -33,9 +33,10 @@ export class CyclesCheck extends BaseCheck {
       throw new Error(`madge failed: ${result.stderr.trim() || result.stdout.trim()}`);
     }
 
-    // A root scan also reads untracked and ignored files, so keep only cycles made wholly of the files listed above.
+    // Keep only cycles made wholly of the files listed above. madge follows imports wherever they lead: a root scan reads
+    // untracked and ignored files, and a relative import or a symlink reaches files outside the repo, none of which are ours to report.
     const checked = new Set(files);
-    const wanted = targets.length === 1 && targets[0] === repo.root ? cycles.filter((cycle) => cycle.every((path) => checked.has(path))) : cycles;
+    const wanted = cycles.filter((cycle) => cycle.every((path) => checked.has(path)));
     // One finding per file, so editing any file of a cycle makes the branch answerable for it.
     return wanted.flatMap((cycle) => {
       const message = `import cycle: ${[...cycle, cycle[0]].join(" -> ")}; make dependencies point one way`;
@@ -57,9 +58,11 @@ export async function madgeTargets(repo: Repo, files: string[], budget?: number)
 }
 
 // Without the repo's aliases, madge cannot resolve an import through a tsconfig `paths` entry, so a cycle through one goes unreported.
-// The repo's own tsconfig is never handed to madge: its `extends`, and `paths` targets that are absolute or use `..`, would make madge
-// read files outside the repo. Instead madge gets a generated tsconfig in a folder of ours, holding only `baseUrl` and the `paths`
-// targets that stay inside the repo. A tsconfig with comments or trailing commas is not plain JSON and is treated as having no aliases.
+// The repo's own tsconfig is never handed to madge, so its `extends` and other options never apply. madge gets a generated tsconfig
+// in a folder of ours, holding only `baseUrl` and the aliases whose targets start inside the repo. This is not a sandbox: madge can still
+// read outside the repo through a relative import, or a symlink under a wildcard target (measured 2026-11-11). It parses those files
+// for imports only, and the cycle filter above keeps them out of the findings.
+// A tsconfig with comments or trailing commas is not plain JSON and is treated as having no aliases.
 async function aliasConfig(repo: Repo, folder: string): Promise<string[]> {
   const path = repo.absolutePath("tsconfig.json");
   if (!(await lstat(path).catch(() => undefined))?.isFile()) return [];
