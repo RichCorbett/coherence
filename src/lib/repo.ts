@@ -43,12 +43,12 @@ export class Repo {
   }
 
   async sourceFiles(): Promise<string[]> {
-    return (await this.trackedSourceFiles()).filter((path) => !NOT_HAND_WRITTEN.test(path));
+    return (await this.splitSourceFiles()).kept;
   }
 
   /** The source files `sourceFiles()` leaves out, so a check can say what it did not cover. */
   async skippedSourceFiles(): Promise<string[]> {
-    return (await this.trackedSourceFiles()).filter((path) => NOT_HAND_WRITTEN.test(path));
+    return (await this.splitSourceFiles()).skipped;
   }
 
   /** Files changed since the branch left `base`; deleted files have nothing left to check. */
@@ -114,8 +114,9 @@ export class Repo {
     return result.stdout;
   }
 
-  private async trackedSourceFiles(): Promise<string[]> {
-    return (await this.gitPaths(["ls-files", "-z"])).filter((path) => SOURCE_FILE.test(path));
+  private async splitSourceFiles(): Promise<{ kept: string[]; skipped: string[] }> {
+    const source = (await this.gitPaths(["ls-files", "-z"])).filter((path) => SOURCE_FILE.test(path));
+    return { kept: source.filter((path) => !NOT_HAND_WRITTEN.test(path)), skipped: source.filter((path) => NOT_HAND_WRITTEN.test(path)) };
   }
 
   private async gitPaths(args: string[]): Promise<string[]> {
