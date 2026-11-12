@@ -25,7 +25,7 @@ function passOptions(args: string[]): PassOptions | string {
 
 // Claude Code lets the command run when the hook passes the 30-second timeout in hooks/hooks.json, so the gate decides
 // within 20 seconds whatever stalls, the hook's stdin or git, and past that refuses and stops the git it started.
-// The other 10 cover node starting and main.ts exiting.
+// The other 10 cover bin/coherence's node probe (up to 5), node starting and main.ts exiting.
 export const HOOK_DEADLINE_MS = 20_000;
 
 const UNREADABLE_HOOK =
