@@ -94,7 +94,7 @@ export class Repo {
 
   /** True when the working tree is not exactly HEAD: a changed tracked file, staged or not, or an untracked file that is not ignored. */
   async hasUncommittedChanges(): Promise<boolean> {
-    const result = await git(["status", "--porcelain", "--untracked-files=all"], this.root);
+    const result = await git(["status", "--porcelain", "--untracked-files=normal"], this.root);
     if (result.code !== 0) throw new Error(`git status failed: ${firstLine(result.stderr)}`);
     return result.stdout.trim() !== "";
   }
