@@ -661,6 +661,19 @@ for (const name of ["GH_REPO", "GH_HOST"]) {
   });
 }
 
+test("a PR is refused while gh repo set-default stores a repository other than origin's, since gh would follow it", async () => {
+  // gh repo set-default writes remote.<name>.gh-resolved; the value is `base` or an owner/repo, and only origin's `base` is this folder's repository.
+  const withDefault = async (remote: string, value: string) => {
+    const repo = await reviewedRepo();
+    git(repo.root, "config", `remote.${remote}.gh-resolved`, value);
+    return runHook(repo.root, "gh pr create --fill");
+  };
+  assert.deepEqual(await withDefault("origin", "base"), []);
+  for (const [remote, value] of [["upstream", "base"], ["origin", "o/r"]]) {
+    assert.match(refusal(await withDefault(remote, value)), new RegExp(`remote\\.${remote}\\.gh-resolved is ${value}`), remote);
+  }
+});
+
 test("a PR pointed at another repository is refused", async () => {
   const repo = await reviewedRepo();
   for (const command of ["gh pr create -R o/r", "gh pr create -Ro/r", "gh pr create -dR o/r", "gh pr create --repo o/r", "gh pr create --repo=o/r"]) {
