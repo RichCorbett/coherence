@@ -3,8 +3,11 @@ import { COMMIT_SHA, firstLine, git, type Repo } from "./repo.ts";
 /** The recorded base of a review that read the whole repo, not a diff from a base. It cannot be a commit ID. */
 export const WHOLE_REPO = "all";
 
+/** The variable name of both record keys, the base one adding `-base`. git reads section and variable names in any case. */
+export const REVIEW_KEY_NAME = "coherence-reviewed";
+
 function reviewedKey(branch: string): string {
-  return `branch.${branch}.coherence-reviewed`;
+  return `branch.${branch}.${REVIEW_KEY_NAME}`;
 }
 
 function reviewedBaseKey(branch: string): string {

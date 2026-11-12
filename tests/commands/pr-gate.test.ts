@@ -63,6 +63,33 @@ test("lets every other shell command through without asking git anything", async
   assert.deepEqual(await runHook(tempFolder(), "gh pr list"), []);
 });
 
+test("a Bash line naming the review record's keys is refused, and the pass line and other git config lines are not", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const sha = git(repo.root, "rev-parse", "HEAD");
+  for (const command of [
+    `git config branch.feature.coherence-reviewed ${sha}`,
+    `git -c branch.feature.coherence-reviewed=${sha} status`,
+    `git config --local branch.feature.coherence-reviewed ${sha}`,
+    `git config branch.feature.coherence-reviewed-base all`,
+    `git config --unset-all branch.feature.coherence-reviewed`,
+    `git config Branch.feature.Coherence-Reviewed ${sha}`,
+    `git config BRANCH.feature.COHERENCE-REVIEWED ${sha}`,
+    `cd sub && git config branch.feature.coherence-reviewed ${sha}`,
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), /review record.*written only by `pr-gate pass`/, command);
+  }
+  for (const command of [
+    `"\${CLAUDE_PLUGIN_ROOT}/bin/coherence" pr-gate pass --verdict 'merge' --branch 'feature' --head '${sha}' --base 'main'`,
+    "git config user.name x",
+    "git config --local core.editor vim",
+    "git config --get branch.feature.remote",
+    "git -c core.pager=cat log",
+  ]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
 test("ordinary commands are let through, and a mention of gh pr create, even in quoted text, is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");

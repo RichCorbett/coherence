@@ -3,7 +3,7 @@ import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { hookInput, opensPr, options, prOptions } from "../lib/gh-pr-create.ts";
 import { stopRunning } from "../lib/process.ts";
 import { COMMIT_SHA, isUsableRef, Repo, UnresolvedRef } from "../lib/repo.ts";
-import { markCommitReviewed, reviewedBase, reviewedCommit, revokeReview, WHOLE_REPO } from "../lib/review-record.ts";
+import { markCommitReviewed, REVIEW_KEY_NAME, reviewedBase, reviewedCommit, revokeReview, WHOLE_REPO } from "../lib/review-record.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
 
 /** The branch the PR names as its head, read the way gh reads it. */
@@ -79,6 +79,12 @@ export class PrGateCommand extends BaseCommand {
     // Claude Code always sends this, so input without it means the hook protocol changed; guessing at it would let PRs through.
     if (!hook) {
       this.deny(invocation, UNREADABLE_HOOK);
+      return Exit.ok;
+    }
+    // Text rule, like the gh mention below: a line naming the record's keys is a write to it, and only `pr-gate pass` may write it.
+    // The pass line itself never names them. A key built from pieces or written with the Edit tool still gets past this.
+    if (hook.command.toLowerCase().includes(REVIEW_KEY_NAME)) {
+      this.deny(invocation, `Refused by coherence: this command names the review record (${REVIEW_KEY_NAME}), which is written only by \`pr-gate pass\`. Skipping review is the owner's decision, not yours.`);
       return Exit.ok;
     }
     if (!opensPr(hook.command, shellCommands(hook.command))) return Exit.ok;
