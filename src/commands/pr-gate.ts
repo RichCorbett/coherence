@@ -136,7 +136,9 @@ export class PrGateCommand extends BaseCommand {
     if (head !== current) return this.refusePass(invocation, `HEAD is now ${current}, not the reviewed ${head}. Review again`);
     // The checks read the working tree, so it must hold exactly the reviewed commit.
     if (await repo.hasUncommittedChanges()) return this.refusePass(invocation, "the working tree has uncommitted changes or untracked files, so it is not the reviewed commit");
-    const baseId = base === undefined ? undefined : await repo.resolveCommit(base);
+    // A --base that no longer resolves is a refusal with a reason, like the rest, not an error for main.ts to print.
+    const baseId = base === undefined ? undefined : await repo.resolveCommit(base).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error))));
+    if (baseId instanceof Error) return this.refusePass(invocation, baseId.message, Exit.usage);
     if (baseId === head) return this.refusePass(invocation, "--base is the reviewed commit itself, so the review saw an empty diff", Exit.usage);
     // Over the same scope the review used, so the recorded base and the checked base are one commit.
     const checked = await this.check

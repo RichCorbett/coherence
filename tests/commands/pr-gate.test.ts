@@ -348,6 +348,14 @@ test("an unknown verb prints the usage and exits 2, and pass needs a branch", as
   assert.match(detached.error, /^coherence pr-gate pass refused: a detached HEAD is checked out, not the reviewed main/);
 });
 
+test("pass with a --base that is not a commit is refused with a reason, as every other refusal is, not thrown", async () => {
+  const repo = await twoCommitFeature();
+  const refused = await passWith(repo.root, [...mergeOfHead(repo.root), "--base", "nosuchbranch"]);
+  assert.equal(refused.code, Exit.usage);
+  assert.match(refused.error, /^coherence pr-gate pass refused: nosuchbranch is not a commit/);
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
 test("pass refuses without a branch, a verdict or a head, or with a branch name that is not plainly a name", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
