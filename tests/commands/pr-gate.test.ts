@@ -356,6 +356,20 @@ test("pass with a --base that is not a commit is refused with a reason, as every
   assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
 });
 
+test("pass with a --base that git cannot read fails as a git failure, not as a bad ref", async () => {
+  const repo = await twoCommitFeature();
+  // A ref whose object is corrupt makes git itself fail, where a missing ref only fails to resolve.
+  const id = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo.root, input: "x" }).toString().trim();
+  const object = join(repo.root, ".git", "objects", id.slice(0, 2), id.slice(2));
+  chmodSync(object, 0o644);
+  writeFileSync(object, "garbage");
+  writeFileSync(join(repo.root, ".git", "refs", "heads", "broken"), `${id}\n`);
+  const refused = await passWith(repo.root, [...mergeOfHead(repo.root), "--base", "broken"]);
+  assert.equal(refused.code, Exit.failed);
+  assert.match(refused.error, /^coherence pr-gate pass refused: git failed while resolving --base broken: git rev-parse failed/);
+  assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
+});
+
 test("pass refuses without a branch, a verdict or a head, or with a branch name that is not plainly a name", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");

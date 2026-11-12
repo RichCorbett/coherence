@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { hookInput, opensPr, options, prOptions } from "../lib/gh-pr-create.ts";
-import { COMMIT_SHA, isUsableRef, Repo } from "../lib/repo.ts";
+import { COMMIT_SHA, isUsableRef, Repo, UnresolvedRef } from "../lib/repo.ts";
 import { markCommitReviewed, reviewedBase, reviewedCommit, revokeReview, WHOLE_REPO } from "../lib/review-record.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
 
@@ -136,9 +136,10 @@ export class PrGateCommand extends BaseCommand {
     if (head !== current) return this.refusePass(invocation, `HEAD is now ${current}, not the reviewed ${head}. Review again`);
     // The checks read the working tree, so it must hold exactly the reviewed commit.
     if (await repo.hasUncommittedChanges()) return this.refusePass(invocation, "the working tree has uncommitted changes or untracked files, so it is not the reviewed commit");
-    // A --base that no longer resolves is a refusal with a reason, like the rest, not an error for main.ts to print.
+    // A --base that no longer resolves is a refusal with a reason; a failure of git itself is not the ref's fault.
     const baseId = base === undefined ? undefined : await repo.resolveCommit(base).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error))));
-    if (baseId instanceof Error) return this.refusePass(invocation, baseId.message, Exit.usage);
+    if (baseId instanceof UnresolvedRef) return this.refusePass(invocation, baseId.message, Exit.usage);
+    if (baseId instanceof Error) return this.refusePass(invocation, `git failed while resolving --base ${base}: ${baseId.message}`, Exit.failed);
     if (baseId === head) return this.refusePass(invocation, "--base is the reviewed commit itself, so the review saw an empty diff", Exit.usage);
     // Over the same scope the review used, so the recorded base and the checked base are one commit.
     const checked = await this.check

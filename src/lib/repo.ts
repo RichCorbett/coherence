@@ -28,6 +28,9 @@ export function firstLine(text: string): string {
   return text.trim().split("\n")[0];
 }
 
+/** A ref that names no commit, as opposed to git failing to look. */
+export class UnresolvedRef extends Error {}
+
 /** The git repository under review. Every check sees the code through this one view. */
 export class Repo {
   readonly root: string;
@@ -52,11 +55,13 @@ export class Repo {
     return this.gitPaths(["diff", "--name-only", "-z", "--diff-filter=d", "--end-of-options", `${base}...HEAD`]);
   }
 
-  /** The commit ID `ref` names. Throws on a ref that is not plainly a name, or that is not a commit. */
+  /** The commit ID `ref` names. Throws on a ref that is not plainly a name, or that is not a commit, and on a git failure. */
   async resolveCommit(ref: string): Promise<string> {
-    if (!isUsableRef(ref)) throw new Error(`not a usable ref name: ${ref.slice(0, 80)}`);
-    const result = await git(["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], this.root);
-    if (result.code !== 0) throw new Error(`${ref} is not a commit: ${firstLine(result.stderr)}`);
+    if (!isUsableRef(ref)) throw new UnresolvedRef(`not a usable ref name: ${ref.slice(0, 80)}`);
+    // With -q, git exits 1 when the ref names no commit and any other non-zero code when git itself failed.
+    const result = await git(["rev-parse", "--verify", "-q", "--end-of-options", `${ref}^{commit}`], this.root);
+    if (result.code === 1) throw new UnresolvedRef(`${ref} is not a commit`);
+    if (result.code !== 0) throw new Error(`git rev-parse failed: ${firstLine(result.stderr)}`);
     return result.stdout.trim();
   }
 
