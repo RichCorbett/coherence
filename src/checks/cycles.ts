@@ -1,6 +1,7 @@
-import { lstat } from "node:fs/promises";
+import { lstat, readFile, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
-import { runPinnedTool } from "../lib/process.ts";
+import { runPinnedTool, withTempFolder } from "../lib/process.ts";
 import type { Repo } from "../lib/repo.ts";
 
 const SCRIPT_FILE = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
@@ -19,8 +20,9 @@ export class CyclesCheck extends BaseCheck {
 
     // madge exits 1 when it finds cycles, so only a missing JSON answer means it failed.
     // --basedir makes madge name files relative to the repo root.
-    const tsConfig = await rootTsConfig(repo);
-    const result = await runPinnedTool(MADGE, [...MADGE_ARGS, "--basedir", repo.root, ...tsConfig, ...files.map((path) => repo.absolutePath(path))]);
+    const result = await withTempFolder(async (folder) =>
+      runPinnedTool(MADGE, [...MADGE_ARGS, "--basedir", repo.root, ...(await aliasConfig(repo, folder)), ...files.map((path) => repo.absolutePath(path))]),
+    );
     let cycles: string[][];
     try {
       cycles = JSON.parse(result.stdout);
@@ -36,11 +38,32 @@ export class CyclesCheck extends BaseCheck {
   }
 }
 
-// Without the repo's tsconfig, madge cannot resolve an import through a `paths` alias, so a cycle through one goes unreported.
-// The file is data to madge, never code, but it comes from the repo under review: it can still name an `extends` file or alias
-// targets outside the repo, which madge would then read and follow. Only a plain file is passed, so a symlink cannot point madge elsewhere.
-async function rootTsConfig(repo: Repo): Promise<string[]> {
+// Without the repo's aliases, madge cannot resolve an import through a tsconfig `paths` entry, so a cycle through one goes unreported.
+// The repo's own tsconfig is never handed to madge: its `extends`, and `paths` targets that are absolute or use `..`, would make madge
+// read files outside the repo. Instead madge gets a generated tsconfig in a folder of ours, holding only `baseUrl` and the `paths`
+// targets that stay inside the repo. A tsconfig with comments or trailing commas is not plain JSON and is treated as having no aliases.
+async function aliasConfig(repo: Repo, folder: string): Promise<string[]> {
   const path = repo.absolutePath("tsconfig.json");
-  const info = await lstat(path).catch(() => undefined);
-  return info?.isFile() ? ["--ts-config", path] : [];
+  if (!(await lstat(path).catch(() => undefined))?.isFile()) return [];
+  let options: { baseUrl?: unknown; paths?: unknown };
+  try {
+    options = JSON.parse(await readFile(path, "utf8")).compilerOptions ?? {};
+  } catch {
+    return [];
+  }
+  const baseUrl = resolve(repo.root, typeof options.baseUrl === "string" ? options.baseUrl : ".");
+  if (!isInside(repo.root, baseUrl) || typeof options.paths !== "object" || options.paths === null) return [];
+  const paths: Record<string, string[]> = {};
+  for (const [alias, targets] of Object.entries(options.paths)) {
+    const inside = Array.isArray(targets) ? targets.filter((target) => typeof target === "string" && isInside(repo.root, resolve(baseUrl, target))) : [];
+    if (inside.length > 0) paths[alias] = inside;
+  }
+  const generated = join(folder, "tsconfig.json");
+  await writeFile(generated, JSON.stringify({ compilerOptions: { baseUrl, paths } }));
+  return ["--ts-config", generated];
+}
+
+function isInside(root: string, path: string): boolean {
+  const from = relative(root, path);
+  return from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from);
 }

@@ -30,7 +30,7 @@ The design rules live in `rules/design.md`. `coherence rules` prints them, so wh
 
 These catch what needs no judgment, so a reviewer doesn't have to:
 
-- **cycles:** import cycles, type-only ones included. Imports through `paths` aliases are followed when the repo has a plain (not symlinked) `tsconfig.json` at its root; a nested package's own tsconfig is not read.
+- **cycles:** import cycles, type-only ones included. Imports through `paths` aliases are followed when the repo has a plain (not symlinked) `tsconfig.json` at its root; only its `baseUrl` and the `paths` targets that stay inside the repo are used, so `extends`, outside targets, comments in the file and a nested package's own tsconfig are not.
 - **duplicates:** copy-pasted blocks of code.
 - **flat-folder:** more than 15 source files directly in one folder.
 

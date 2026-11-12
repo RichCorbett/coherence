@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { test } from "node:test";
 import { CyclesCheck } from "../../src/checks/cycles.ts";
 import { Repo } from "../../src/lib/repo.ts";
@@ -63,4 +63,36 @@ test("a tsconfig that is a symlink is not handed to the tool", async () => {
   git(root, "add", "-A");
   git(root, "commit", "-q", "-m", "start");
   assert.deepEqual(await new CyclesCheck().run(await Repo.open(root)), []);
+});
+
+test("an alias that points outside the repo is not followed", async () => {
+  // The outside file imports back into the repo, so following the alias would close a cycle.
+  for (const outsideTarget of ["absolute", "dotdot"]) {
+    const outside = tempFolder();
+    const root = tempFolder();
+    writeFiles(outside, { "b.ts": `import { a } from "${join(root, "src/a.ts")}";\nexport const b = a;\n` });
+    const target = outsideTarget === "absolute" ? `${outside}/*` : `${relative(root, outside)}/*`;
+    writeFiles(root, {
+      "tsconfig.json": JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@out/*": [target] } } }),
+      "src/a.ts": 'import { b } from "@out/b";\nexport const a = b;\n',
+    });
+    git(root, "init", "-q", "-b", "main");
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "start");
+    assert.deepEqual(await new CyclesCheck().run(await Repo.open(root)), [], outsideTarget);
+  }
+});
+
+test("an extends of a file outside the repo is not followed", async () => {
+  const outside = tempFolder();
+  writeFileSync(join(outside, "base.json"), ALIAS_TSCONFIG);
+  const repo = await tempRepo({ ...ALIAS_FILES, "tsconfig.json": JSON.stringify({ extends: join(outside, "base.json") }) });
+  assert.deepEqual(await new CyclesCheck().run(repo), []);
+});
+
+test("a tsconfig with comments is read as having no aliases, and a repo without one is unchanged", async () => {
+  const commented = await tempRepo({ ...ALIAS_FILES, "tsconfig.json": "// not plain JSON\n" + ALIAS_TSCONFIG });
+  assert.deepEqual(await new CyclesCheck().run(commented), []);
+  const none = await tempRepo({ "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": B_IMPORTS_A });
+  assert.equal((await new CyclesCheck().run(none)).length, 2);
 });
