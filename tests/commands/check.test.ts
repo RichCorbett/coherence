@@ -86,3 +86,17 @@ test("a --base that looks like a git option is read as a ref, so it cannot write
   await assert.rejects(new CheckCommand().execute(fakeInvocation(repo.root, ["--base=--output=WRITTEN"])));
   assert.equal(existsSync(join(repo.root, "WRITTEN...HEAD")), false);
 });
+
+test("says how many source files it skipped under build, dist, vendor and fixtures folders", async () => {
+  const repo = await tempRepo({ "src/build/pipeline.ts": "export const p = 1;\n", "src/real.ts": "export const r = 1;\n" });
+  const invocation = fakeInvocation(repo.root);
+  assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
+  assert.ok(invocation.printed.some((line) => line.includes("skipped 1 source file(s)")));
+});
+
+test("says nothing about skipping when nothing was skipped", async () => {
+  const repo = await tempRepo({ "src/real.ts": "export const r = 1;\n" });
+  const invocation = fakeInvocation(repo.root);
+  await new CheckCommand().execute(invocation);
+  assert.deepEqual(invocation.printed, ["coherence check: clean"]);
+});
