@@ -32,7 +32,10 @@ const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && 
  * `gh` word needs no table. Considered and rejected: anchoring on an expandable word in any position, because `ls *.ts *.md` and
  * `cp $SRC $DST` would be refused; only the first word is anchored, which covers `"$GH" "$P" create` and `g[h] "$P" create`.
  * Accepted costs: an expandable executable behind a wrapper (`env $GH "$P" create`) and `$CMD` are not seen; `$EDITOR $FILE` is
- * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused".
+ * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused". So is a gh line whose quoted text
+ * says eval, such as `gh issue close --comment "the eval passed"` (#69); the refusal names eval so the cause can be found.
+ * Considered and rejected for #69: counting `eval` only as a parsed word, or a word assigning it. Dissent found an expansion that
+ * yields eval, `${x:+eval}` as the command or in `x=${y:+eval}; "$x"`, which the raw match refuses and the parsed check let through.
  */
 export function opensPr(raw: string, line: string[][]): boolean {
   if (NAMES_PR_CREATE.test(raw) || (RUNS_TEXT.test(raw) && NAMES_GH_OR_PR.test(raw))) return true;
@@ -54,7 +57,7 @@ export function opensPr(raw: string, line: string[][]): boolean {
 const ONE_COMMAND =
   "the line is not exactly one gh pr create command with fixed words. Run gh pr create on its own, from the repo's folder, " +
   "with nothing before gh, no other commands, and no variables, substitutions or wildcards; " +
-  `a --body may be "$(cat <<'EOF' ... EOF)"`;
+  `a --body may be "$(cat <<'EOF' ... EOF)". A line that says eval or sh -c anywhere, even in quoted text, and names gh or pr counts too`;
 
 /** gh pr create's options by short and long name, with the -R it inherits, as `gh pr create --help` lists them on gh 2.103.2. */
 const TAKES_VALUE = new Map([["a", "assignee"], ["B", "base"], ["b", "body"], ["F", "body-file"], ["H", "head"], ["l", "label"], ["m", "milestone"], ["p", "project"], ["r", "reviewer"], ["R", "repo"], ["T", "template"], ["t", "title"]]);

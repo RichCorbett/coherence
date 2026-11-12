@@ -118,6 +118,21 @@ test("gh pr create hidden in a heredoc body, an eval, a nested shell or a substi
   }
 });
 
+test("eval in any spelling the raw text shows refuses a gh line, and the refusal names eval (#69)", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  // Each was let through by a parsed-word check tried for #69, which was dropped for it.
+  for (const command of [
+    `x=eval; command "$x" "$(printf 'g%s pr create' h)"`,
+    `y=1; x=\${y:+eval}; "$x" "$(printf 'g%s pr create' h)"`,
+    `x=1; \${x:+eval} "$(printf 'g%s pr create' h)"`,
+    // The false refusal this costs: the line the installed hook refused on 2026-11-12 at 10:38 EST.
+    `gh issue close 68 -R RichCorbett/coherence --comment "Tests, coherence check and the no-shape eval passed before the push." 2>&1 | tail -1`,
+  ]) {
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command.*says eval or sh -c anywhere/, command);
+  }
+});
+
 test("a PR opened after a shell separator or environment assignment is still refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
