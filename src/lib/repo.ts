@@ -128,12 +128,16 @@ export class Repo {
     if (pushRemote && pushRemote !== "." && !push && !(pushRemote === upstreamRemote && upstream)) {
       throw new Error(`branch ${branch} pushes to ${pushRemote.slice(0, 80)}, which keeps no remote-tracking ref for it here, so what was pushed there cannot be seen. Give the branch an upstream on a remote that fetches it (git push -u <remote> ${branch}), then open the PR again`);
     }
-    const named = [upstream, push].filter((ref) => ref.startsWith("refs/remotes/"));
-    const result = await git(["for-each-ref", "--format=%(refname) %(objectname)", `refs/remotes/*/${branch}`, ...named], this.root);
+    // Exact names from the remotes git knows, since a remote's name can hold a slash, which `refs/remotes/*/<branch>` would not match.
+    const remotes = await git(["remote"], this.root);
+    if (remotes.code !== 0) throw new Error(`git remote failed: ${firstLine(remotes.stderr)}`);
+    const wanted = new Set([upstream, push].filter((ref) => ref.startsWith("refs/remotes/")));
+    for (const remote of remotes.stdout.split("\n").filter(Boolean)) wanted.add(`refs/remotes/${remote}/${branch}`);
+    const result = await git(["for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/"], this.root);
     if (result.code !== 0) throw new Error(`git for-each-ref failed: ${firstLine(result.stderr)}`);
     return result.stdout.split("\n").flatMap((line) => {
       const found = /^(\S+) ([0-9a-f]+)$/.exec(line);
-      return found ? [[found[1], found[2]] as [string, string]] : [];
+      return found && wanted.has(found[1]) ? [[found[1], found[2]] as [string, string]] : [];
     });
   }
 

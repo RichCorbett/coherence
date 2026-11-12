@@ -895,6 +895,15 @@ async function reviewedWithOrigin() {
   return { repo, reviewed };
 }
 
+/** Pushes an unreviewed commit on `feature` to `remote`, then resets `feature` to the reviewed commit, and returns the pushed commit. */
+function pushThenReset(root: string, reviewed: string, remote = "origin"): string {
+  git(root, "commit", "-q", "--allow-empty", "-m", "unreviewed");
+  const pushed = git(root, "rev-parse", "HEAD");
+  git(root, "push", "-q", remote, "feature");
+  git(root, "reset", "-q", "--hard", reviewed);
+  return pushed;
+}
+
 test("a reviewed branch opens whether it was never pushed or pushed as reviewed", async () => {
   const { repo } = await reviewedWithOrigin();
   assert.deepEqual(await runHook(repo.root, "gh pr create --fill"), []);
@@ -908,10 +917,7 @@ test("a reviewed branch opens whether it was never pushed or pushed as reviewed"
 
 test("an unreviewed commit pushed and then reset away is refused, naming the remote ref", async () => {
   const { repo, reviewed } = await reviewedWithOrigin();
-  git(repo.root, "commit", "-q", "--allow-empty", "-m", "unreviewed");
-  const pushed = git(repo.root, "rev-parse", "HEAD");
-  git(repo.root, "push", "-q", "origin", "feature");
-  git(repo.root, "reset", "-q", "--hard", reviewed);
+  const pushed = pushThenReset(repo.root, reviewed);
   assert.equal(git(repo.root, "rev-parse", "feature"), reviewed);
   assert.equal(await reviewedCommit(repo, "feature"), reviewed);
 
@@ -938,6 +944,26 @@ test("an unreviewed commit pushed under another name is refused, through the ups
     const reason = refusal(await runHook(repo.root, "gh pr create --fill"));
     assert.match(reason, new RegExp(`${ref} is ${pushed.slice(0, 8)}, not the reviewed ${reviewed.slice(0, 8)}`), ref);
   }
+});
+
+test("a PR naming another branch with --head checks that branch's remote ref, not the one checked out", async () => {
+  const { repo, reviewed } = await reviewedWithOrigin();
+  const pushed = pushThenReset(repo.root, reviewed);
+  git(repo.root, "checkout", "-q", "-b", "elsewhere");
+
+  for (const command of ["gh pr create --head feature --fill", "gh pr create -H feature --fill"]) {
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`refs/remotes/origin/feature is ${pushed.slice(0, 8)}, not the reviewed ${reviewed.slice(0, 8)}`), command);
+  }
+});
+
+test("an unreviewed commit pushed to a remote whose name holds a slash is refused", async () => {
+  const { repo, reviewed } = await reviewedWithOrigin();
+  const team = tempFolder();
+  git(team, "init", "-q", "--bare");
+  git(repo.root, "remote", "add", "team/origin", team);
+  const pushed = pushThenReset(repo.root, reviewed, "team/origin");
+
+  assert.match(refusal(await runHook(repo.root, "gh pr create --fill")), new RegExp(`refs/remotes/team/origin/feature is ${pushed.slice(0, 8)}`));
 });
 
 test("a branch that pushes to a remote with no tracking ref for it is refused, since what was pushed there cannot be seen", async () => {
