@@ -191,3 +191,32 @@ test("a diff or textconv command named by the repo is not run", async (t) => {
   assert.match(out, /^\+three$/m, "the real change is in the diff");
   assert.equal(existsSync(ran), false);
 });
+
+test("taste entries added since the previous review get their own section, and each run moves that point forward", async (t) => {
+  const { repo } = await branchedRepo(t, { "a.ts": "x\n" }, { "b.ts": "y\n" });
+  const config = join(process.env.XDG_CONFIG_HOME!, "coherence");
+  mkdirSync(config, { recursive: true });
+  writeFileSync(join(config, "taste-log.md"), "- 2020-01-01 old log line\n- 2099-01-01 fresh log line\n");
+  // A condensed entry is new too, or condensing would hide it from the owner.
+  writeFileSync(join(config, "taste-archive.md"), "- 2020-01-02 old archived line\n- 2099-01-02 fresh archived line\n");
+  const section = (out: string) => out.slice(out.indexOf("=== NEW TASTE"), out.indexOf("=== DESIGN RULES ==="));
+
+  const first = (await run(repo.root, ["--base", "main"])).out;
+  assert.match(section(first), /no previous review/);
+  assert.match(section(first), /old log line[\s\S]*fresh log line|fresh log line[\s\S]*old log line/);
+  assert.ok(first.indexOf("=== OWNER TASTE ===") < first.indexOf("=== NEW TASTE") && first.indexOf("=== NEW TASTE") < first.indexOf("=== DESIGN RULES ==="));
+
+  writeFileSync(join(config, "taste-last-review"), "2050-01-01\n");
+  const second = section((await run(repo.root, ["--base", "main"])).out);
+  assert.match(second, /fresh log line/);
+  assert.match(second, /fresh archived line/);
+  assert.doesNotMatch(second, /old log line|old archived line/);
+
+  await run(repo.root, ["--base", "main"]);
+  assert.match(readFileSync(join(config, "taste-last-review"), "utf8"), new RegExp(`^${new Date().toISOString().slice(0, 10)}\\n$`));
+  writeFileSync(join(config, "taste-log.md"), "- 2020-01-01 old log line\n");
+  writeFileSync(join(config, "taste-archive.md"), "");
+  const none = section((await run(repo.root, ["--base", "main"])).out);
+  assert.match(none, /none/);
+  assert.doesNotMatch(none, /old log line/);
+});
