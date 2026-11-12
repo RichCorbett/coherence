@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { appendFile, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -49,10 +50,11 @@ export async function condenseTaste(rules: string): Promise<number> {
 // Written under a temporary name and renamed, so a backup exists only once it is complete.
 async function backUpRules(): Promise<void> {
   if (!existsSync(rulesPath())) return;
-  const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
-  const temporary = configFile(`taste-rules.${stamp}Z.tmp`);
+  // Milliseconds and a random suffix, so two condenses in the same second never share a name and overwrite a backup.
+  const stamp = `${new Date().toISOString().replace(/:/g, "-")}-${randomUUID().slice(0, 8)}`;
+  const temporary = configFile(`taste-rules.${stamp}.tmp`);
   await copyFile(rulesPath(), temporary);
-  await rename(temporary, configFile(`taste-rules.${stamp}Z.md`));
+  await rename(temporary, configFile(`taste-rules.${stamp}.md`));
 }
 
 async function readEntries(): Promise<string[]> {

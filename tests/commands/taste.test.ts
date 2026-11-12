@@ -74,6 +74,19 @@ test("condense replaces the rules, archives the entries, and the rules read befo
   assert.match(shown.printed[0], /^one voice\n\n## Rules condensed so far\n\n- plain functions first\n\n## Entries not yet condensed\n\n- \S+ newer$/);
 });
 
+const BACKUP = /^taste-rules\.\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d\.\d{3}Z-[0-9a-f]{8}\.md$/;
+
+test("condenses within the same second each keep their own backup", async (t) => {
+  const folder = dirname(isolated(t));
+  const command = new TasteCommand();
+  for (const rules of ["- one\n", "- two\n", "- three\n"]) {
+    await command.execute(fakeInvocation(process.cwd(), ["add", "entry"]));
+    await command.execute(fakeInvocation(process.cwd(), ["condense"], rules));
+  }
+  const kept = readdirSync(folder).filter((name) => BACKUP.test(name)).map((name) => readFileSync(join(folder, name), "utf8"));
+  assert.deepEqual(kept.sort(), ["- one\n", "- two\n"]);
+});
+
 test("condense keeps the replaced rules in a timestamped backup, and the archive keeps entries whole", async (t) => {
   const log = isolated(t);
   const folder = dirname(log);
@@ -84,7 +97,7 @@ test("condense keeps the replaced rules in a timestamped backup, and the archive
 
   await command.execute(fakeInvocation(process.cwd(), ["add", "second"]));
   await command.execute(fakeInvocation(process.cwd(), ["condense"], "- rules two\n"));
-  const backups = readdirSync(folder).filter((name) => /^taste-rules\.\d{4}-\d\d-\d\dT\d\d-\d\d-\d\dZ\.md$/.test(name));
+  const backups = readdirSync(folder).filter((name) => BACKUP.test(name));
   assert.equal(backups.length, 1);
   assert.equal(readFileSync(join(folder, backups[0]), "utf8"), "- rules one\n");
   assert.equal(readFileSync(join(folder, "taste-rules.md"), "utf8"), "- rules two\n");
