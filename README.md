@@ -42,7 +42,7 @@ Taste is text the reviewer, and anything that writes code, reads before working.
 
 - `taste/style.md` is the default opinion the plugin ships with. "The owner" in it means you.
 - `~/.config/coherence/taste-log.md` is your running log, one dated line per preference. Say "drop that" to undo the newest line.
-- At 40 lines the skill condenses the log into `taste-rules.md`, merging repeats and letting newer entries win. The originals move to `taste-archive.md`, and `coherence taste uncondense` puts the previous rules and entries back if the rewrite lost something.
+- At 40 lines the skill condenses the log into `taste-rules.md`, merging repeats and letting newer entries win. The originals move to `taste-archive.md`. Each condense first copies the old rules to `taste-rules.<UTC timestamp>.md` in the same folder; to undo one, copy that file over `taste-rules.md`.
 
 ## Install
 
@@ -79,7 +79,6 @@ coherence taste                           print your taste
 coherence taste add "..."                 record a preference
 coherence taste undo                      take back the newest one
 coherence taste condense                  replace the rules with stdin and archive the log
-coherence taste uncondense                take back the last condense
 ```
 
 ## What it can't do

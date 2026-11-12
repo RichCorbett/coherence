@@ -20,5 +20,5 @@ Condense it right then, in this session, and leave out the offer to undo, becaus
 
 1. Read everything with `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste`. Your input is the part under `## Rules condensed so far` and `## Entries not yet condensed`, and everything above those headings ships with the plugin.
 2. Write short rules that cover the earlier rules and all the entries. Merge repeats. When two conflict, the newer wins. Keep the owner's words where you can, and don't add anything they didn't say.
-3. Pipe the rules in, through a heredoc on stdin, to `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste condense`. They replace the earlier rules, and the entries move to an archive. The earlier rules and entries are kept, so `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste uncondense` undoes a condense that lost something.
-4. Tell the owner in a line or two what changed, including anything you dropped because a newer entry overrode it, and that "undo the condense" restores the earlier rules.
+3. Pipe the rules in, through a heredoc on stdin, to `${CLAUDE_PLUGIN_ROOT}/bin/coherence taste condense`. They replace the earlier rules, and the entries move to an archive. The earlier rules are kept as `taste-rules.<UTC timestamp>.md` in `~/.config/coherence/` (under `$XDG_CONFIG_HOME` if set), and the entries stay whole in `taste-archive.md`.
+4. Tell the owner in a line or two what changed, including anything you dropped because a newer entry overrode it, and that copying a backup over `taste-rules.md` restores the earlier rules.
