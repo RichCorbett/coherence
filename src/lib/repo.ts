@@ -43,8 +43,9 @@ export class Repo {
   }
 
   async sourceFiles(): Promise<string[]> {
-    const tracked = await this.gitPaths(["ls-files", "-z"]);
-    return tracked.filter((path) => SOURCE_FILE.test(path) && !NOT_HAND_WRITTEN.test(path));
+    // Untracked files count too: the checks run when code is written, usually before `git add`. Ignored files stay out.
+    const files = await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
+    return files.filter((path) => SOURCE_FILE.test(path) && !NOT_HAND_WRITTEN.test(path));
   }
 
   /** Files changed since the branch left `base`; deleted files have nothing left to check. */
