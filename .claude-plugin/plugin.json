@@ -1,6 +1,6 @@
 {
   "name": "coherence",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Makes agent-written code read like one person wrote it: deterministic checks, one readability reviewer, a taste log and a pull request gate tied to the reviewed commit.",
   "author": {
     "name": "grreardon"
