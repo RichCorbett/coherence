@@ -128,7 +128,7 @@ test("eval counts only as a command word, so gh lines whose quoted text says eva
   ]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
-  for (const command of [`command eval "$(printf 'g%s pr create' h)"`, `e''val "$(printf 'g%s pr create' h)"`, `X=$(eval "$(printf 'g%s pr create' h)")`, `echo "eval passed" && eval "$(printf 'g%s pr create' h)"`]) {
+  for (const command of [`command eval "$(printf 'g%s pr create' h)"`, `e''val "$(printf 'g%s pr create' h)"`, `X=$(eval "$(printf 'g%s pr create' h)")`, `echo "eval passed" && eval "$(printf 'g%s pr create' h)"`, `x=eval; command "$x" "$(printf 'g%s pr create' h)"`]) {
     assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
   }
 });

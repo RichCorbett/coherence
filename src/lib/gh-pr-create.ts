@@ -22,9 +22,10 @@ const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && 
 /**
  * Whether a line could open a PR, so that it must be exactly `gh pr create` or be refused. Broad on purpose, so it also matches a
  * mention, such as one in a commit message. The raw text matches when it names `gh pr create` anywhere, or names `gh` or `pr` on a
- * line that runs text as commands: through `sh -c` in the raw text, or through a parsed command that has the word `eval`. `eval`
- * counts only as a parsed word: matched in the raw text, it refused `gh issue close --comment "the eval passed"` (#69). Quoted text
- * naming gh is refused by shellCommands anyway, and text piped or fed to a shell is not seen with or without `eval`. A parsed command matches when `pr` and then `create` follow a word that is or
+ * line that runs text as commands: through `sh -c` in the raw text, or through a parsed word that is `eval` or assigns it, as in
+ * `x=eval`. `eval` counts only as a parsed word: matched in the raw text, it refused `gh issue close --comment "the eval passed"`
+ * (#69). Quoted text naming gh is refused by shellCommands anyway, and text piped or fed to a shell is not seen with or without
+ * `eval`. A parsed command matches when `pr` and then `create` follow a word that is or
  * could become `gh`, such as `g[h]`, or when it starts with `pr`, where a substitution split it from its executable. It also matches
  * a command with a word that is literally `gh`, wherever it sits, or a first word that could become `gh`, and an expandable word
  * after it, unless that gh's subcommand is fixed and is not `pr create`.
@@ -34,10 +35,12 @@ const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && 
  * `gh` word needs no table. Considered and rejected: anchoring on an expandable word in any position, because `ls *.ts *.md` and
  * `cp $SRC $DST` would be refused; only the first word is anchored, which covers `"$GH" "$P" create` and `g[h] "$P" create`.
  * Accepted costs: an expandable executable behind a wrapper (`env $GH "$P" create`) and `$CMD` are not seen; `$EDITOR $FILE` is
- * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused".
+ * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused". `eval` built from pieces and run by
+ * `command` or `builtin` (`x=ev; command "${x}al" ...`) is not seen, as it was not when the raw text was matched; an `eval` word
+ * that is only an argument (`gh issue close --comment eval`) is refused, since telling it apart needs the wrapper table.
  */
 export function opensPr(raw: string, line: string[][]): boolean {
-  const runsText = RUNS_TEXT.test(raw) || line.some((words) => words.includes("eval"));
+  const runsText = RUNS_TEXT.test(raw) || line.some((words) => words.some((word) => word === "eval" || word.endsWith("=eval")));
   if (NAMES_PR_CREATE.test(raw) || (runsText && NAMES_GH_OR_PR.test(raw))) return true;
   return line.some((words) => {
     // A gh with an expandable word after it is a candidate unless its subcommand is proven fixed and not `pr create`: an option or
