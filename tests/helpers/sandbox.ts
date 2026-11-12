@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -14,6 +15,14 @@ export function writeFiles(root: string, files: Files): void {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), content);
   }
+}
+
+/** Enough small script files, each with a long path, that naming them all on one command line passes the system's argument limit. */
+export function filesPastArgMax(): Files {
+  const argMax = Number(execFileSync("getconf", ["ARG_MAX"], { encoding: "utf8" }));
+  const folder = Array.from({ length: 3 }, (_, i) => `${i}`.padEnd(200, "d")).join("/");
+  const count = Math.ceil(argMax / folder.length) + 100;
+  return Object.fromEntries(Array.from({ length: count }, (_, i) => [`${folder}/f${i}.ts`, "export {};\n"]));
 }
 
 /** Sets environment variables for one test and puts them back afterwards. */

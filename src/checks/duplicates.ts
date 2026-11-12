@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
 import { runPinnedTool, withTempFolder } from "../lib/process.ts";
@@ -16,6 +16,7 @@ export class DuplicatesCheck extends BaseCheck {
 
   async run(repo: Repo): Promise<Finding[]> {
     // Naming the files keeps jscpd off fixtures and node_modules, which only sourceFiles() excludes.
+    // They go in a config file, because a command line holding one path per file passes the system's argument limit on a large repo.
     const files = await repo.sourceFiles();
     if (files.length === 0) return [];
 
@@ -28,7 +29,9 @@ export class DuplicatesCheck extends BaseCheck {
 
   private async findClones(repo: Repo, files: string[]): Promise<Clone[]> {
     return withTempFolder(async (output) => {
-      const result = await runPinnedTool(JSCPD, [...JSCPD_ARGS, "--output", output, ...files.map((path) => repo.absolutePath(path))]);
+      const config = join(output, "jscpd-config.json");
+      await writeFile(config, JSON.stringify({ path: files.map((path) => repo.absolutePath(path)) }));
+      const result = await runPinnedTool(JSCPD, [...JSCPD_ARGS, "--config", config, "--output", output]);
       if (result.code !== 0) throw new Error(`jscpd failed: ${result.stderr.trim() || result.stdout.trim()}`);
       return JSON.parse(await readFile(join(output, "jscpd-report.json"), "utf8")).duplicates;
     });

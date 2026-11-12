@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DuplicatesCheck } from "../../src/checks/duplicates.ts";
+import { filesPastArgMax } from "../helpers/sandbox.ts";
 import { tempRepo } from "../helpers/temp-repo.ts";
 
 const BLOCK = Array.from({ length: 40 }, (_, i) => `export function f${i}(a: number, b: number) { const total = a + b * ${i}; return total > 10 ? total : a; }`).join("\n");
@@ -21,4 +22,9 @@ test("a file named like a flag is read as a path, not as an option to the tool",
 test("does not scan fixtures", async () => {
   const repo = await tempRepo({ "tests/fixtures/one.ts": `${BLOCK}\n`, "tests/fixtures/two.ts": `${BLOCK}\n` });
   assert.deepEqual(await new DuplicatesCheck().run(repo), []);
+});
+
+test("runs on a repo with more files than fit on one command line", { timeout: 120_000 }, async () => {
+  const repo = await tempRepo({ ...filesPastArgMax(), "src/a/one.ts": `${BLOCK}\n`, "src/b/two.ts": `${BLOCK}\n` });
+  assert.deepEqual((await new DuplicatesCheck().run(repo)).map((finding) => finding.path).sort(), ["src/a/one.ts", "src/b/two.ts"]);
 });

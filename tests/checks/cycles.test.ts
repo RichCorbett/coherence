@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CyclesCheck } from "../../src/checks/cycles.ts";
+import { filesPastArgMax, writeFiles } from "../helpers/sandbox.ts";
 import { tempRepo } from "../helpers/temp-repo.ts";
 
 const A_IMPORTS_B = 'import { b } from "./b.ts";\nexport const a = b;\n';
@@ -34,4 +35,15 @@ test("passes imports that point one way, and a repo with no script files", async
   const oneWay = await tempRepo({ "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": "export const b = 1;\n" });
   assert.deepEqual(await new CyclesCheck().run(oneWay), []);
   assert.deepEqual(await new CyclesCheck().run(await tempRepo({ "notes.md": "hi\n" })), []);
+});
+
+test("runs on a repo with more files than fit on one command line", { timeout: 120_000 }, async () => {
+  const repo = await tempRepo({ ...filesPastArgMax(), "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": B_IMPORTS_A });
+  assert.deepEqual((await new CyclesCheck().run(repo)).map((finding) => finding.path).sort(), ["src/x/a.ts", "src/x/b.ts"]);
+});
+
+test("ignores a cycle in files the repo does not track, and in vendored ones", async () => {
+  const repo = await tempRepo({ ".gitignore": "out/\n", "src/a.ts": "export const a = 1;\n" });
+  writeFiles(repo.root, { "out/a.ts": A_IMPORTS_B, "out/b.ts": B_IMPORTS_A, "vendor/a.ts": A_IMPORTS_B, "vendor/b.ts": B_IMPORTS_A });
+  assert.deepEqual(await new CyclesCheck().run(repo), []);
 });
