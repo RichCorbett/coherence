@@ -31,7 +31,8 @@ const FIXED = (word?: string) => word !== undefined && !word.startsWith("-") && 
  * of which options take a value, and the table grew its own bypasses (`/usr/bin/env`, `sudo -Eu user`, `A+=x`). Looking at every
  * `gh` word needs no table. Considered and rejected: anchoring on an expandable word in any position, because `ls *.ts *.md` and
  * `cp $SRC $DST` would be refused; only the first word is anchored, which covers `"$GH" "$P" create` and `g[h] "$P" create`.
- * Accepted costs: an expandable executable behind a wrapper (`env $GH "$P" create`) and `$CMD` are not seen; `$EDITOR $FILE` is
+ * Accepted costs: an expandable executable behind a wrapper (`env $GH "$P" create`, or `command "${x}al" ...`, eval built from
+ * pieces, #70) and `$CMD` are not seen; `$EDITOR $FILE` is
  * refused, as is `printf '%s %s' gh "$HOME"`, which falls under "a mention of gh is refused". So is a gh line whose quoted text
  * says eval, such as `gh issue close --comment "the eval passed"` (#69); the refusal names eval so the cause can be found.
  * Considered and rejected for #69: counting `eval` only as a parsed word, or a word assigning it. Dissent found an expansion that

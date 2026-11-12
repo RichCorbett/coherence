@@ -149,6 +149,9 @@ function parse(line: string): { commands: string[][]; substitutions: string[]; d
       else if (line.startsWith("$(", i) || char === "`") {
         const end = char === "`" ? closingBacktick(line, i) : closingParen(line, i + 1);
         substitutions.push(line.slice(i + (char === "`" ? 1 : 2), end));
+        // The word keeps a `$` for its substitution, so it still reads as expandable: dropped, `"$(printf pr)"` read as the fixed
+        // word "", and `"$a$b" "$(printf 'g%s pr create' h)"` passed as a command whose subcommand is fixed (#70).
+        word += "$";
         i = end;
       } else word += char;
     } else if (char === "'" || char === '"') {
