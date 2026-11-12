@@ -79,6 +79,7 @@ coherence taste                           print your taste
 coherence taste add "..."                 record a preference
 coherence taste undo                      take back the newest one
 coherence taste condense                  replace the rules with stdin and archive the log
+coherence taste seen                      record today as the latest review, for the next one's new taste
 ```
 
 ## What it can't do

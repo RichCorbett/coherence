@@ -192,7 +192,7 @@ test("a diff or textconv command named by the repo is not run", async (t) => {
   assert.equal(existsSync(ran), false);
 });
 
-test("taste entries added since the previous review get their own section, and each run moves that point forward", async (t) => {
+test("taste entries added since the previous review get their own section, and only a recorded review moves that point", async (t) => {
   const { repo } = await branchedRepo(t, { "a.ts": "x\n" }, { "b.ts": "y\n" });
   const config = join(process.env.XDG_CONFIG_HOME!, "coherence");
   mkdirSync(config, { recursive: true });
@@ -212,11 +212,20 @@ test("taste entries added since the previous review get their own section, and e
   assert.match(second, /fresh archived line/);
   assert.doesNotMatch(second, /old log line|old archived line/);
 
-  await run(repo.root, ["--base", "main"]);
-  assert.match(readFileSync(join(config, "taste-last-review"), "utf8"), new RegExp(`^${new Date().toISOString().slice(0, 10)}\\n$`));
   writeFileSync(join(config, "taste-log.md"), "- 2020-01-01 old log line\n");
   writeFileSync(join(config, "taste-archive.md"), "");
   const none = section((await run(repo.root, ["--base", "main"])).out);
   assert.match(none, /none/);
   assert.doesNotMatch(none, /old log line/);
+});
+
+test("gathering input consumes no new taste, so a review that fails after it shows the same entries again", async (t) => {
+  const { repo } = await branchedRepo(t, { "a.ts": "x\n" }, { "b.ts": "y\n" });
+  const config = join(process.env.XDG_CONFIG_HOME!, "coherence");
+  mkdirSync(config, { recursive: true });
+  writeFileSync(join(config, "taste-log.md"), "- 2020-01-01 unseen line\n");
+
+  await run(repo.root, ["--base", "main"]);
+  assert.equal(existsSync(join(config, "taste-last-review")), false);
+  assert.match((await run(repo.root, ["--base", "main"])).out, /=== NEW TASTE \(no previous review[^\n]*\n- 2020-01-01 unseen line/);
 });

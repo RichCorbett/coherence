@@ -121,3 +121,10 @@ test("a preference with a line break or control character is refused, so one add
   }
   assert.equal(existsSync(log), false);
 });
+
+test("seen records today, in the entries' UTC form, as the day of the latest review", async (t) => {
+  const log = isolated(t);
+  const invocation = fakeInvocation(process.cwd(), ["seen"]);
+  assert.equal(await new TasteCommand().execute(invocation), Exit.ok);
+  assert.equal(readFileSync(join(dirname(log), "taste-last-review"), "utf8"), `${new Date().toISOString().slice(0, 10)}\n`);
+});
