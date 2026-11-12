@@ -153,32 +153,45 @@ test("a heredoc that does not mention a PR is not read as one, and a PR after a 
   }
 });
 
-test("a quoted << or a quoted ) does not hide the command after it", async () => {
+test("text the parser takes for data cannot hide a command: data that names gh is refused", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
+  const hidden = `"$GH" "$P" create`;
   for (const command of [
-    // A << inside quotes is text, not a heredoc, so the next line still runs.
-    `echo "<<EOF"\n"$GH" "$P" create`,
-    `echo '<<EOF'\n"$GH" "$P" create`,
-    `echo "<<EOF x"\n"$GH" "$P" create`,
-    `echo '<<EOF x'\n"$GH" "$P" create`,
-    `echo "$(echo "<<EOF")"\n"$GH" "$P" create`,
-    // A ) inside quotes does not end the substitution.
-    `echo "$(echo ")")"; "$GH" "$P" create`,
-    `echo "$(echo ')')"; "$GH" "$P" create`,
-    `echo "$(echo \\))"; "$GH" "$P" create`,
-    `echo "$(echo "$(echo ")")")"; "$GH" "$P" create`,
-    // A ) ending a case pattern is not the end of the substitution, and a backslash may escape a backtick.
-    `echo "$(case x in a) true;; esac; "$GH" "$P" create)"`,
-    `echo "$(echo "$(case x in a) true;; esac)"; "$GH" "$P" create)"`,
-    "echo \"`echo \\`x\\` ; $G $P create`\"",
-    // A delimiter the parser cannot read is not trusted to end a body.
-    `cat <<E-OF\n"$GH" "$P" create`,
+    // A quoted << is text, and a quoted ) does not end a substitution.
+    `echo "<<EOF x"\n${hidden}`,
+    `echo '<<EOF x'\n${hidden}`,
+    `echo "$(echo ")")"; ${hidden}`,
+    `echo "$(echo ')')"; ${hidden}`,
+    `echo "$(echo "$(echo ")")")"; ${hidden}`,
+    // A ) ending a case pattern, and a backslash that escapes a backtick.
+    `echo "$(case x in a) true;; esac; ${hidden})"`,
+    "echo \"`echo \\`x\\` ; $GH $P create`\"",
+    // Multiple heredocs, a # after an escape, an arithmetic <<, an indented terminator, a delimiter the parser cannot read,
+    // an expanding heredoc body, a heredoc in a comment, and an arithmetic command.
+    `cat <<A <<B\nA\n"\nB\n${hidden}`,
+    `echo "$(echo foo\\ #) harmless"; ${hidden}`,
+    `echo $((1 << COUNT\n))\n${hidden}`,
+    `cat <<EOF\n EOF\n"\nEOF\n${hidden}`,
+    `cat <<E-OF\n"\nE-OF\n${hidden}`,
+    `cat <<EOF\n$(${hidden})\nEOF`,
+    `echo hi # <<EOF\n${hidden}`,
+    `echo hi; ((1 << EOF))\n${hidden}`,
+    // Quotes or backslashes inside the data split the name.
+    `echo "<<EOF x"\n"$G""h" "$P" create`,
+    `cat <<EOF\ng\\h "$P" create\nEOF`,
   ]) {
     assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
   }
-  // Real heredoc bodies stay data, even with quotes and parentheses in them.
-  for (const command of [`git commit -m "$(cat <<'EOF'\nit's ) and "<<x\nEOF\n)"`, `cat <<EOF\n"$GH" "$P" create\nEOF`, "git commit -m \"$(cat <<'EOF'\ncase x in a) y;; esac\n`z`\nEOF\n)\""]) {
+  // Ordinary lines with quotes, comments, heredocs, arithmetic and parentheses that do not name gh stay allowed.
+  for (const command of [
+    `git commit -m "$(cat <<'EOF'\nit's ) and "<<x\nEOF\n)"`,
+    "git commit -m \"$(cat <<'EOF'\ncase x in a) y;; esac\n`z`\nEOF\n)\"",
+    "ls # a note <<EOF",
+    "cat <<'EOF'\nline\nEOF\nls",
+    "echo $((1 << 3)) \"$(echo ')')\"",
+    `echo "$(case x in a) true;; esac)"`,
+  ]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
 });

@@ -3,27 +3,23 @@ import { basename } from "node:path";
 /** `<<` and its delimiter, which must be followed by something that ends the word, so a delimiter this cannot read is never trusted to end a body. */
 const HEREDOC_OPEN = /<<-?[ \t]*(['"]?)([A-Za-z_]\w*)\1(?![^\s;&|()<>])/y;
 
-/**
- * Thrown for a substitution whose end this cannot find with confidence. Reading on past a guessed end could leave real commands
- * inside what the outer pass takes for quoted text, so shellCommands answers with UNREADABLE_COMMAND, which the PR gate refuses.
- */
-const UNREADABLE = new Error("a substitution this cannot read");
-const UNREADABLE_COMMAND = ["gh", "pr", "create"];
+/** `gh` as a word in any case, as `bin/coherence` reads it when it cannot run. */
+const GH_WORD = /(^|[^A-Za-z0-9_])gh([^A-Za-z0-9_]|$)/i;
+/** What shellCommands answers for a line whose data names gh, so the PR gate sees a PR command it cannot judge and refuses the line. */
+const UNREADABLE = ["gh", "pr", "create"];
 
-const CASE = /^case\s/;
 const SHELL = /^(ba|z|da)?sh$/;
 const RUNS_NEXT_WORD = /^-[a-z]*c$/;
 
-/** Every command a shell line would run, as words, including those inside substitutions, `sh -c` and `eval`. */
+/**
+ * Every command a shell line would run, as words, including those inside substitutions, `sh -c` and `eval`. Shell syntax is too
+ * varied to be sure where data (quoted text, heredoc bodies) ends, and a command this misreads as data hides in it. Such a command
+ * names gh, perhaps split by quotes or backslashes, so a line whose data does is answered with UNREADABLE. That refuses quoted
+ * text and heredoc bodies that merely mention gh too, which is the price.
+ */
 export function shellCommands(line: string): string[][] {
-  let parsed;
-  try {
-    parsed = parse(line);
-  } catch (error) {
-    if (error === UNREADABLE) return [UNREADABLE_COMMAND];
-    throw error;
-  }
-  const { commands, substitutions } = parsed;
+  const { commands, substitutions, data } = parse(line);
+  if (GH_WORD.test(data) || GH_WORD.test(data.replace(/[\\'"]/g, ""))) return [UNREADABLE];
   return [...commands, ...substitutions.flatMap(shellCommands), ...commands.flatMap(wrapped)];
 }
 
@@ -117,17 +113,24 @@ function wrapped(words: string[]): string[][] {
 }
 
 /** Splits at shell separators and honours quotes, so quoted text stays one word, and drops heredoc bodies. Substitutions inside double quotes still run, so they are collected. */
-function parse(line: string): { commands: string[][]; substitutions: string[] } {
+function parse(line: string): { commands: string[][]; substitutions: string[]; data: string } {
   const commands: string[][] = [];
   const substitutions: string[] = [];
   let words: string[] = [];
   let word: string | undefined;
   let quote: string | undefined;
   const bodies: string[] = [];
+  // Text taken for data: every word that has a quote in it, whole, since a misread quote can pull unquoted text into the word, and heredoc bodies.
+  let data = "";
+  let quoted = false;
 
   const endWord = () => {
-    if (word !== undefined) words.push(word);
+    if (word !== undefined) {
+      words.push(word);
+      if (quoted) data += word + "\n";
+    }
     word = undefined;
+    quoted = false;
   };
   const endCommand = () => {
     endWord();
@@ -150,6 +153,7 @@ function parse(line: string): { commands: string[][]; substitutions: string[] } 
       } else word += char;
     } else if (char === "'" || char === '"') {
       quote = char;
+      quoted = true;
       word ??= "";
     } else if (char === "\\") {
       word = (word ?? "") + (line[++i] ?? "");
@@ -159,7 +163,11 @@ function parse(line: string): { commands: string[][]; substitutions: string[] } 
       bodies.push(heredoc.delimiter);
       i = heredoc.end - 1;
     } else if (/[;&|\n()`]/.test(char)) {
-      if (char === "\n" && bodies.length) i = heredocBodyEnd(line, i, bodies.shift()!);
+      if (char === "\n" && bodies.length) {
+        const end = heredocBodyEnd(line, i, bodies.shift()!);
+        data += line.slice(i + 1, end) + "\n";
+        i = end;
+      }
       endCommand();
     } else if (/\s/.test(char)) {
       endWord();
@@ -168,13 +176,11 @@ function parse(line: string): { commands: string[][]; substitutions: string[] } 
     }
   }
   endCommand();
-  return { commands, substitutions };
+  return { commands, substitutions, data };
 }
 
-/** A backslash in a backtick substitution may escape a backtick, which this does not pair, so such a substitution is unreadable. */
 function closingBacktick(line: string, open: number): number {
   const end = line.indexOf("`", open + 1);
-  if (line.slice(open, end === -1 ? line.length : end).includes("\\")) throw UNREADABLE;
   return end === -1 ? line.length : end;
 }
 
@@ -213,9 +219,6 @@ function closingParen(line: string, open: number): number {
       const heredoc = heredocAt(line, i)!;
       bodies.push(heredoc.delimiter);
       i = heredoc.end - 1;
-    } else if (char === "c" && CASE.test(line.slice(i, i + 5)) && /[\s;&|(]/.test(line[i - 1] ?? " ")) {
-      // A `)` ends a case pattern, not the substitution, and pairing case with esac is not attempted.
-      throw UNREADABLE;
     } else if (char === "(") depth++;
     else if (char === ")" && --depth === 0) return i;
   }
