@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
-import { PrGateCommand } from "../../src/commands/pr-gate.ts";
+import { HOOK_DEADLINE_MS, PrGateCommand } from "../../src/commands/pr-gate.ts";
 import { BaseCommand, Exit } from "../../src/lib/base-command.ts";
 import { markCommitReviewed, reviewedCommit } from "../../src/lib/review-record.ts";
 import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
@@ -715,6 +715,27 @@ test("a hook that cannot decide by its deadline refuses, and a late decision pri
   assert.match(refusal(invocation.printed), /could not check it: deciding took longer than 0.1 seconds/);
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.equal(invocation.printed.length, 1, invocation.printed.join("\n"));
+});
+
+test("a hook stuck on a hung git refuses by its deadline and kills that git, rather than leave it running", async (t) => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  const bin = tempFolder();
+  const pidFile = join(tempFolder(), "git.pid");
+  writeFileSync(join(bin, "git"), `#!/bin/sh\necho $$ > '${pidFile}'\nexec /bin/sleep 30\n`);
+  chmodSync(join(bin, "git"), 0o755);
+  setEnv(t, { PATH: bin });
+  const invocation = fakeInvocation(repo.root, [], JSON.stringify({ cwd: repo.root, tool_name: "Bash", tool_input: { command: "gh pr create --fill" } }));
+  assert.equal(await new PrGateCommand(new CheckCommand(), 300).execute(invocation), Exit.ok);
+  assert.match(refusal(invocation.printed), /deciding took longer than 0.3 seconds/);
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `git ${pid} is still running`);
+});
+
+test("the hook's deadline leaves at least 10 seconds of the timeout hooks/hooks.json gives it", () => {
+  const hooks = JSON.parse(readFileSync(join(import.meta.dirname, "../../hooks/hooks.json"), "utf8"));
+  const timeout = hooks.hooks.PreToolUse[0].hooks[0].timeout;
+  assert.ok(HOOK_DEADLINE_MS + 10_000 <= timeout * 1000, `deadline ${HOOK_DEADLINE_MS} ms, hook timeout ${timeout} s`);
 });
 
 test("a PR for a named branch that has no local commit here is refused, and says to check out or fetch it", async () => {

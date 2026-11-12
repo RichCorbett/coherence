@@ -9,13 +9,8 @@ const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
 // A folder in the repo under review can pose as a repository of its own, and its config can name a command for git to run.
 const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"];
 
-// A hung git must not run the PR hook into Claude Code's 30-second hook timeout, which lets the command through.
-// Cut off, the call fails and the hook refuses. 15 seconds is far longer than git takes for these reads on a large repo.
-// bin/coherence once probed git --version for this, but that found a different git from node's under claude plugin eval.
-export const GIT_TIMEOUT_MS = 15_000;
-
-export function git(args: string[], cwd: string, timeoutMs = GIT_TIMEOUT_MS): Promise<ProcessResult> {
-  return runProcess("git", [...REFUSE_PLANTED_REPOSITORIES, ...args], cwd, timeoutMs);
+export function git(args: string[], cwd: string): Promise<ProcessResult> {
+  return runProcess("git", [...REFUSE_PLANTED_REPOSITORIES, ...args], cwd);
 }
 
 // A ref from a person or a skill is checked before git sees it, so it can never pass for an option or carry shell syntax along.

@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { type ChildProcess, execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -9,6 +9,14 @@ export type ProcessResult = { code: number; stdout: string; stderr: string };
 // Large repos make git and the external tools print a lot; the default buffer would kill them mid-run.
 export const MAX_OUTPUT_MB = 64;
 const MAX_OUTPUT_BYTES = MAX_OUTPUT_MB * 1024 * 1024;
+
+// Every program runProcess has started and not yet seen exit, so the PR hook can stop them when it runs out of time.
+const running = new Set<ChildProcess>();
+
+/** Kills every program runProcess started that is still running. Their calls then fail. */
+export function stopRunning(): void {
+  for (const child of running) child.kill("SIGKILL");
+}
 
 /**
  * Runs a program to completion. A non-zero exit is a result to inspect, not an error.
@@ -24,6 +32,8 @@ export function runProcess(command: string, args: string[], cwd: string, timeout
       if (error && typeof error.code !== "number") return reject(error);
       resolve({ code: typeof error?.code === "number" ? error.code : 0, stdout, stderr });
     });
+    running.add(child);
+    child.on("exit", () => running.delete(child));
     // Nothing feeds these programs, and one that reads stdin would wait forever.
     child.stdin?.end();
   });

@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { hookInput, opensPr, options, prOptions } from "../lib/gh-pr-create.ts";
+import { stopRunning } from "../lib/process.ts";
 import { COMMIT_SHA, isUsableRef, Repo } from "../lib/repo.ts";
 import { markCommitReviewed, reviewedBase, reviewedCommit, revokeReview, WHOLE_REPO } from "../lib/review-record.ts";
 import { shellCommands } from "../lib/shell-commands.ts";
@@ -22,8 +23,9 @@ function passOptions(args: string[]): PassOptions | string {
   }
 }
 
-// Claude Code lets the command run when the hook passes its 30-second timeout, so the gate decides within 20 seconds
-// whatever stalls, the hook's stdin or git, and past that refuses. The other 10 cover node starting and main.ts exiting.
+// Claude Code lets the command run when the hook passes the 30-second timeout in hooks/hooks.json, so the gate decides
+// within 20 seconds whatever stalls, the hook's stdin or git, and past that refuses and stops the git it started.
+// The other 10 cover node starting and main.ts exiting.
 export const HOOK_DEADLINE_MS = 20_000;
 
 const UNREADABLE_HOOK =
@@ -59,6 +61,7 @@ export class PrGateCommand extends BaseCommand {
     const deadline = new Promise<number>((resolve) => {
       timer = setTimeout(() => {
         late = true;
+        stopRunning();
         resolve(this.cannotCheck(invocation, `deciding took longer than ${this.deadlineMs / 1000} seconds`));
       }, this.deadlineMs);
     });
