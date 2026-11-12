@@ -61,7 +61,12 @@ export async function condenseTaste(rules: string): Promise<number> {
   const entries = await readEntries();
   // The rewrite is lossy, so the rules it replaces are kept; the archive already keeps the entries whole, with their dates.
   await backUpRules();
-  // In this order so a crash can leave an entry in two places but never lose a preference.
+  // In this order so a crash can leave an entry in two places but never lose a preference. That holds for a crash, not for
+  // concurrency: an add that lands between the read and the rm is lost, and so is one between undo's read and its write.
+  // Two fixes were tried and dropped (fix/issue-46, fix/issue-46b), because we believed a lock, then a rename-aside, closes
+  // the window. Neither does: a pid-based lock misjudges liveness across hosts and leaves claims a crash cannot clear, and an
+  // append that opened the log before a rename still writes into the copy already read. Only one file per entry closes it,
+  // a storage change judged too large for a low-impact loss (a lost entry is usually a repeat). Stated in the README.
   await writeFile(rulesPath(), `${rules.trim()}\n`);
   await appendFile(archivePath(), asLines(entries));
   await rm(logPath(), { force: true });
