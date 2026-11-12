@@ -96,3 +96,30 @@ test("a tsconfig with comments is read as having no aliases, and a repo without 
   const none = await tempRepo({ "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": B_IMPORTS_A });
   assert.equal((await new CyclesCheck().run(none)).length, 2);
 });
+
+// An alias cycle through `target`, closed by a file in `outside` that imports back into the repo, so following the alias reports it.
+async function aliasThroughLink(options: { baseUrl: string; paths: Record<string, string[]> }): Promise<number> {
+  const outside = tempFolder();
+  const root = tempFolder();
+  writeFiles(outside, { "b.ts": `import { a } from "${join(root, "src/a.ts")}";\nexport const b = a;\n` });
+  writeFiles(root, {
+    "tsconfig.json": JSON.stringify({ compilerOptions: options }),
+    "src/a.ts": 'import { b } from "@out/b";\nexport const a = b;\n',
+    "src/lib/placeholder.ts": "export const p = 1;\n",
+  });
+  symlinkSync(outside, join(root, "vendor"));
+  git(root, "init", "-q", "-b", "main");
+  git(root, "add", "-A");
+  git(root, "commit", "-q", "-m", "start");
+  return (await new CyclesCheck().run(await Repo.open(root))).length;
+}
+
+test("a symlink inside the repo that leads outside is not followed as a baseUrl or a target", async () => {
+  assert.equal(await aliasThroughLink({ baseUrl: "vendor", paths: { "@out/*": ["*"] } }), 0);
+  assert.equal(await aliasThroughLink({ baseUrl: ".", paths: { "@out/*": ["vendor/*"] } }), 0);
+  assert.equal(await aliasThroughLink({ baseUrl: ".", paths: { "@out/*": ["vendor/nothing-yet/*"] } }), 0);
+});
+
+test("an alias with one target outside the repo is dropped whole", async () => {
+  assert.equal(await aliasThroughLink({ baseUrl: ".", paths: { "@out/*": ["src/lib/*", "vendor/*"] } }), 0);
+});

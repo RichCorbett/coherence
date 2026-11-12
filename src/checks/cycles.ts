@@ -1,5 +1,5 @@
-import { lstat, readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
 import { runPinnedTool, withTempFolder } from "../lib/process.ts";
 import type { Repo } from "../lib/repo.ts";
@@ -51,19 +51,32 @@ async function aliasConfig(repo: Repo, folder: string): Promise<string[]> {
   } catch {
     return [];
   }
+  const root = await realpath(repo.root);
   const baseUrl = resolve(repo.root, typeof options.baseUrl === "string" ? options.baseUrl : ".");
-  if (!isInside(repo.root, baseUrl) || typeof options.paths !== "object" || options.paths === null) return [];
+  if (!(await isInside(root, baseUrl)) || typeof options.paths !== "object" || options.paths === null) return [];
   const paths: Record<string, string[]> = {};
   for (const [alias, targets] of Object.entries(options.paths)) {
-    const inside = Array.isArray(targets) ? targets.filter((target) => typeof target === "string" && isInside(repo.root, resolve(baseUrl, target))) : [];
-    if (inside.length > 0) paths[alias] = inside;
+    // All or nothing: dropping only some targets could make TypeScript resolve the alias to a different file.
+    if (!Array.isArray(targets) || targets.length === 0) continue;
+    const inside = await Promise.all(targets.map(async (target) => typeof target === "string" && (await isInside(root, resolve(baseUrl, target)))));
+    if (inside.every(Boolean)) paths[alias] = targets;
   }
   const generated = join(folder, "tsconfig.json");
   await writeFile(generated, JSON.stringify({ compilerOptions: { baseUrl, paths } }));
   return ["--ts-config", generated];
 }
 
-function isInside(root: string, path: string): boolean {
-  const from = relative(root, path);
-  return from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from);
+/** Whether `path`, with symlinks resolved, is inside `root`, which must already be a real path. Only the part before a `*` is real, and the part that does not exist yet cannot lead anywhere. */
+async function isInside(root: string, path: string): Promise<boolean> {
+  let existing = path.split("*")[0];
+  for (;;) {
+    try {
+      const from = relative(root, await realpath(existing));
+      return from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from);
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return false;
+      existing = parent;
+    }
+  }
 }
