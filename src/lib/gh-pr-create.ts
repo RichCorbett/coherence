@@ -1,8 +1,12 @@
 import { basename } from "node:path";
 import { HEREDOC_TEXT, staticWords } from "./shell-commands.ts";
 
-/** A word the shell could still change. A trailing `@`, `+` or `!` is an extended glob such as `@(pr)`, which the parser splits at `(`. */
-const COULD_EXPAND = (word: string) => /[$`*?[{\\]|[@+!]$/.test(word);
+/**
+ * A word the shell could still change. A trailing `@`, `+` or `!` is an extended glob such as `@(pr)`, which the parser splits at `(`.
+ * A `[` counts only with a `]` after it: measured 2026-11-12 with a file named gh present, bash leaves `[`, `[[` and `g[h` as they are
+ * and zsh refuses `g[` as a bad pattern, so neither turns them into gh. Counting a lone `[` refused the test command, as in `[ -n "$P" ]`.
+ */
+const COULD_EXPAND = (word: string) => /[$`*?{\\]|\[.*\]|[@+!]$/.test(word);
 /** A word that is `gh`, or that the shell could still turn into `gh` by expanding it. */
 const COULD_BE_GH = (word: string) => basename(word) === "gh" || COULD_EXPAND(word);
 
