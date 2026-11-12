@@ -1,3 +1,4 @@
+import { lstat } from "node:fs/promises";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
 import { runPinnedTool } from "../lib/process.ts";
 import type { Repo } from "../lib/repo.ts";
@@ -18,7 +19,8 @@ export class CyclesCheck extends BaseCheck {
 
     // madge exits 1 when it finds cycles, so only a missing JSON answer means it failed.
     // --basedir makes madge name files relative to the repo root.
-    const result = await runPinnedTool(MADGE, [...MADGE_ARGS, "--basedir", repo.root, ...files.map((path) => repo.absolutePath(path))]);
+    const tsConfig = await rootTsConfig(repo);
+    const result = await runPinnedTool(MADGE, [...MADGE_ARGS, "--basedir", repo.root, ...tsConfig, ...files.map((path) => repo.absolutePath(path))]);
     let cycles: string[][];
     try {
       cycles = JSON.parse(result.stdout);
@@ -32,4 +34,13 @@ export class CyclesCheck extends BaseCheck {
       return cycle.map((path) => this.finding(path, message));
     });
   }
+}
+
+// Without the repo's tsconfig, madge cannot resolve an import through a `paths` alias, so a cycle through one goes unreported.
+// The file is data to madge, never code, but it comes from the repo under review: it can still name an `extends` file or alias
+// targets outside the repo, which madge would then read and follow. Only a plain file is passed, so a symlink cannot point madge elsewhere.
+async function rootTsConfig(repo: Repo): Promise<string[]> {
+  const path = repo.absolutePath("tsconfig.json");
+  const info = await lstat(path).catch(() => undefined);
+  return info?.isFile() ? ["--ts-config", path] : [];
 }

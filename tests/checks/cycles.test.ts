@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { symlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { CyclesCheck } from "../../src/checks/cycles.ts";
-import { tempRepo } from "../helpers/temp-repo.ts";
+import { Repo } from "../../src/lib/repo.ts";
+import { tempFolder, writeFiles } from "../helpers/sandbox.ts";
+import { git, tempRepo } from "../helpers/temp-repo.ts";
 
 const A_IMPORTS_B = 'import { b } from "./b.ts";\nexport const a = b;\n';
 const B_IMPORTS_A = 'import { a } from "./a.ts";\nexport const b = a;\n';
@@ -34,4 +38,29 @@ test("passes imports that point one way, and a repo with no script files", async
   const oneWay = await tempRepo({ "src/x/a.ts": A_IMPORTS_B, "src/x/b.ts": "export const b = 1;\n" });
   assert.deepEqual(await new CyclesCheck().run(oneWay), []);
   assert.deepEqual(await new CyclesCheck().run(await tempRepo({ "notes.md": "hi\n" })), []);
+});
+
+const ALIAS_TSCONFIG = '{ "compilerOptions": { "baseUrl": ".", "paths": { "@lib/*": ["src/lib/*"] } } }\n';
+const ALIAS_FILES = {
+  "tsconfig.json": ALIAS_TSCONFIG,
+  "src/a.ts": 'import { b } from "@lib/b";\nexport const a = b;\n',
+  "src/lib/b.ts": 'import { a } from "../a.ts";\nexport const b = a;\n',
+};
+
+test("finds a cycle that runs through a path alias from the repo's tsconfig", async () => {
+  const repo = await tempRepo(ALIAS_FILES);
+  assert.deepEqual((await new CyclesCheck().run(repo)).map((finding) => finding.path).sort(), ["src/a.ts", "src/lib/b.ts"]);
+});
+
+test("a tsconfig that is a symlink is not handed to the tool", async () => {
+  // The repo under review could point the link at a file outside it; the alias cycle is then missed, never read through.
+  const outside = join(tempFolder(), "outside.json");
+  writeFileSync(outside, ALIAS_TSCONFIG);
+  const root = tempFolder();
+  writeFiles(root, { "src/a.ts": ALIAS_FILES["src/a.ts"], "src/lib/b.ts": ALIAS_FILES["src/lib/b.ts"] });
+  symlinkSync(outside, join(root, "tsconfig.json"));
+  git(root, "init", "-q", "-b", "main");
+  git(root, "add", "-A");
+  git(root, "commit", "-q", "-m", "start");
+  assert.deepEqual(await new CyclesCheck().run(await Repo.open(root)), []);
 });
