@@ -10,10 +10,13 @@ while [ -L "$f" ]; do
   esac
 done
 
-# Preflight: the code is TypeScript run directly by node, and most commands shell out to git.
-# It asks node whether it can strip types rather than guessing from a version number.
-# Each probe gets $limit seconds, so a hung node or git cannot run the hook into its 30-second timeout,
-# which lets the command through. Two probes at 5 seconds still leave main.ts 20 of the 30.
+# Preflight: the code is TypeScript run directly by node, so it asks node whether it can strip types
+# rather than guessing from a version number. The probe gets $limit seconds, so a hung node cannot run
+# the hook into its 30-second timeout, which lets the command through.
+# There is no git probe. One was tried, on the belief that a git that cannot run is best caught here.
+# Under claude plugin eval it found Apple's /usr/bin/git, which the sandbox blocks, although node's own
+# git calls worked; so it refused every command where the plugin worked. A broken git fails at the
+# first git call, and the PR hook's deadline in src/commands/pr-gate.ts stops a hung one.
 # COHERENCE_PROBE_SECONDS exists for the tests, which cannot wait 5 seconds per case. It can only shorten
 # the limit: anything but a fraction of a second or a whole 1 to 5 is ignored, so it can never push the
 # probes past the hook's timeout or put arbitrary text into the hook's JSON.
@@ -52,20 +55,6 @@ if ! probe node -e 'process.exit(process.features.typescript ? 0 : 1)'; then
   else
     missing="the node on PATH cannot run TypeScript; install a current Node, for example with brew install node"
   fi
-else
-  # taste and rules only read and write files, so they run without git.
-  case "$1" in
-    taste | rules) ;;
-    *)
-      if ! probe git --version; then
-        if [ "$status" -eq 137 ]; then
-          missing="git did not answer within $limit seconds"
-        else
-          missing="git does not run (git --version failed); install git, for example with brew install git"
-        fi
-      fi
-      ;;
-  esac
 fi
 
 if [ -n "$missing" ]; then
