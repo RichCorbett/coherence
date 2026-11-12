@@ -13,9 +13,18 @@ const MAX_OUTPUT_BYTES = MAX_OUTPUT_MB * 1024 * 1024;
 // Every program runProcess has started and not yet seen exit, so the PR hook can stop them when it runs out of time.
 const running = new Set<ChildProcess>();
 
-/** Kills every program runProcess started that is still running. Their calls then fail. */
+// Set once stopRunning has been called, so a check still setting up cannot start a program after the others were stopped.
+let stopped = false;
+
+/** Kills every program runProcess started that is still running, and refuses to start any more. Their calls then fail. */
 export function stopRunning(): void {
+  stopped = true;
   for (const child of running) child.kill("SIGKILL");
+}
+
+/** For tests only: a process runs one command and exits, but tests share one process per file. */
+export function resumeRunning(): void {
+  stopped = false;
 }
 
 /**
@@ -23,6 +32,7 @@ export function stopRunning(): void {
  * With `timeoutMs`, a program still running after that long is killed and the call fails.
  */
 export function runProcess(command: string, args: string[], cwd: string, timeoutMs?: number): Promise<ProcessResult> {
+  if (stopped) return Promise.reject(new Error(`coherence is stopping; ${command} ${args[0] ?? ""} was not started`));
   return new Promise((resolve, reject) => {
     const child = execFile(command, args, { cwd, maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8", timeout: timeoutMs }, (error, stdout, stderr) => {
       if (error?.killed && timeoutMs !== undefined) {

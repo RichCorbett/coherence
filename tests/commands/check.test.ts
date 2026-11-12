@@ -3,7 +3,9 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, symlinkSync } from "node
 import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
+import { BaseCheck, type Finding } from "../../src/lib/base-check.ts";
 import { Exit } from "../../src/lib/base-command.ts";
+import { resumeRunning, runProcess } from "../../src/lib/process.ts";
 import { Repo } from "../../src/lib/repo.ts";
 import { writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
@@ -125,4 +127,44 @@ test("a failure to count skipped files is reported but does not fail the check",
   assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
   assert.ok(invocation.printed.some((line) => line.includes("could not count skipped files: boom")));
   assert.equal(invocation.printed.at(-1), "coherence check: clean");
+});
+
+class StubCheck extends BaseCheck {
+  readonly name: string;
+  readonly run: () => Promise<Finding[]>;
+
+  constructor(name: string, run: () => Promise<Finding[]>) {
+    super();
+    this.name = name;
+    this.run = run;
+  }
+}
+
+test("when one check fails, the programs the other checks started are stopped", async (t) => {
+  t.after(resumeRunning);
+  const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
+  // Exits by itself after 3s, so a missing stop fails this test instead of hanging the run.
+  const slow = runProcess(process.execPath, ["-e", "setTimeout(() => process.exit(0), 3000);"], repo.root);
+  const checks: BaseCheck[] = [new StubCheck("slow", () => slow.then(() => [])), new StubCheck("broken", () => Promise.reject(new Error("tool failed")))];
+
+  const started = Date.now();
+  await assert.rejects(new CheckCommand(checks).execute(fakeInvocation(repo.root)), { message: "tool failed" });
+  await assert.rejects(slow);
+  assert.ok(Date.now() - started < 2500, "the slow program ran to its end");
+});
+
+test("when one check fails, a program another check starts afterwards is never started", async (t) => {
+  t.after(resumeRunning);
+  const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
+  const marker = join(repo.root, "STARTED");
+  const late = new StubCheck("late", async () => {
+    await new Promise((done) => setTimeout(done, 50));
+    await runProcess(process.execPath, ["-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "ran")`], repo.root);
+    return [];
+  });
+  const checks: BaseCheck[] = [late, new StubCheck("broken", () => Promise.reject(new Error("tool failed")))];
+
+  await assert.rejects(new CheckCommand(checks).execute(fakeInvocation(repo.root)), { message: "tool failed" });
+  await new Promise((done) => setTimeout(done, 300));
+  assert.equal(existsSync(marker), false);
 });

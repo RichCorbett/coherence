@@ -6,6 +6,7 @@ import { test, type TestContext } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
 import { HOOK_DEADLINE_MS, PrGateCommand } from "../../src/commands/pr-gate.ts";
 import { BaseCommand, Exit } from "../../src/lib/base-command.ts";
+import { resumeRunning } from "../../src/lib/process.ts";
 import { markCommitReviewed, reviewedCommit } from "../../src/lib/review-record.ts";
 import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
@@ -740,7 +741,8 @@ test("hook input that cannot be read from stdin at all is refused as unreadable"
   assert.match(refusal(invocation.printed), /^coherence pr-gate could not read the hook input/);
 });
 
-test("a hook that cannot decide by its deadline refuses, and a late decision prints no second answer", async () => {
+test("a hook that cannot decide by its deadline refuses, and a late decision prints no second answer", async (t) => {
+  t.after(resumeRunning);
   const repo = await tempRepo({ "a.ts": "x\n" });
   const invocation = fakeInvocation(repo.root);
   const stdin = JSON.stringify({ cwd: repo.root, tool_name: "Bash", tool_input: { command: "gh pr create --fill" } });
@@ -753,6 +755,7 @@ test("a hook that cannot decide by its deadline refuses, and a late decision pri
 });
 
 test("a hook stuck on a hung git refuses by its deadline and kills that git, rather than leave it running", async (t) => {
+  t.after(resumeRunning);
   const repo = await tempRepo({ "a.ts": "x\n" });
   const bin = tempFolder();
   const pidFile = join(tempFolder(), "git.pid");
