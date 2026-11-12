@@ -9,3 +9,11 @@ test("sourceFiles sees a new file before git add, and still honors .gitignore", 
   assert.equal(git(repo.root, "ls-files", "src/new.ts"), "");
   assert.deepEqual((await repo.sourceFiles()).sort(), ["src/a.ts", "src/new.ts"]);
 });
+
+test("an untracked file counts as uncommitted even when the repository config hides untracked files from status", async () => {
+  const repo = await tempRepo({ "a.ts": "export const a = 1;\n" });
+  git(repo.root, "config", "status.showUntrackedFiles", "no");
+  assert.equal(await repo.hasUncommittedChanges(), false);
+  writeFiles(repo.root, { "notes.ts": "scratch\n" });
+  assert.equal(await repo.hasUncommittedChanges(), true);
+});
