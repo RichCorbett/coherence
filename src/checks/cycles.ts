@@ -49,5 +49,5 @@ export async function madgeTargets(repo: Repo, files: string[], budget?: number)
   budget ??= (Number((await runProcess("getconf", ["ARG_MAX"], repo.root).catch(() => undefined))?.stdout) || 262_144) / 2;
   const paths = files.map((path) => repo.absolutePath(path));
   // Each argument also costs its terminating NUL and a pointer.
-  return paths.reduce((total, path) => total + path.length + 9, 0) > budget ? [repo.root] : paths;
+  return paths.reduce((total, path) => total + Buffer.byteLength(path) + 9, 0) > budget ? [repo.root] : paths;
 }

@@ -48,3 +48,11 @@ test("hands madge each file while they fit the budget, and the repo root when th
   assert.deepEqual(await madgeTargets(repo, ["src/a.ts", "src/b.ts"], 1000), [repo.absolutePath("src/a.ts"), repo.absolutePath("src/b.ts")]);
   assert.deepEqual(await madgeTargets(repo, ["src/a.ts", "src/b.ts"], 10), [repo.root]);
 });
+
+test("the argument budget counts the bytes exec passes, not characters, so multibyte paths cannot slip past it", async () => {
+  const repo = await tempRepo({ "src/a.ts": "export const a = 1;\n" });
+  const name = "src/" + "文".repeat(100) + ".ts";
+  const path = repo.absolutePath(name);
+  const budget = path.length + 9 + 50; // fits in characters, not in UTF-8 bytes
+  assert.deepEqual(await madgeTargets(repo, [name], budget), [repo.root]);
+});
