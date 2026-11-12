@@ -31,6 +31,14 @@ export class CheckCommand extends BaseCommand {
     }
 
     for (const finding of findings) invocation.print(describe(finding));
+    // A name like build/ is also an ordinary word for hand-written code, so a clean result must say what it did not read.
+    // It is only a note, so a failure to count says so and never fails a check that has finished.
+    try {
+      const skipped = (await repo.skippedSourceFiles()).length;
+      if (skipped > 0) invocation.print(`coherence check: skipped ${skipped} source file(s) under node_modules, vendor, dist, build or fixtures folders`);
+    } catch (error) {
+      invocation.print(`coherence check: could not count skipped files: ${(error as Error).message}`);
+    }
     invocation.print(findings.length === 0 ? "coherence check: clean" : `coherence check: ${findings.length} finding(s)`);
     return findings.length === 0 ? Exit.ok : Exit.findings;
   }

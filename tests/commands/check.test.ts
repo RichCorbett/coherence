@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { CheckCommand } from "../../src/commands/check.ts";
 import { Exit } from "../../src/lib/base-command.ts";
+import { Repo } from "../../src/lib/repo.ts";
 import { writeFiles } from "../helpers/sandbox.ts";
 import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
@@ -99,4 +100,29 @@ test("a --base that looks like a git option is read as a ref, so it cannot write
   const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
   await assert.rejects(new CheckCommand().execute(fakeInvocation(repo.root, ["--base=--output=WRITTEN"])));
   assert.equal(existsSync(join(repo.root, "WRITTEN...HEAD")), false);
+});
+
+test("says how many source files it skipped under build, dist, vendor and fixtures folders", async () => {
+  const repo = await tempRepo({ "src/build/pipeline.ts": "export const p = 1;\n", "src/real.ts": "export const r = 1;\n" });
+  const invocation = fakeInvocation(repo.root);
+  assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
+  assert.ok(invocation.printed.some((line) => line.includes("skipped 1 source file(s)")));
+});
+
+test("says nothing about skipping when nothing was skipped", async () => {
+  const repo = await tempRepo({ "src/real.ts": "export const r = 1;\n" });
+  const invocation = fakeInvocation(repo.root);
+  await new CheckCommand().execute(invocation);
+  assert.deepEqual(invocation.printed, ["coherence check: clean"]);
+});
+
+test("a failure to count skipped files is reported but does not fail the check", async (t) => {
+  const repo = await tempRepo({ "src/real.ts": "export const r = 1;\n" });
+  t.mock.method(Repo.prototype, "skippedSourceFiles", async () => {
+    throw new Error("boom");
+  });
+  const invocation = fakeInvocation(repo.root);
+  assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
+  assert.ok(invocation.printed.some((line) => line.includes("could not count skipped files: boom")));
+  assert.equal(invocation.printed.at(-1), "coherence check: clean");
 });

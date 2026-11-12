@@ -50,8 +50,12 @@ export class Repo {
   }
 
   async sourceFiles(): Promise<string[]> {
-    // Untracked files count too: the checks run when code is written, usually before `git add`. Ignored files stay out.
-    return handWritten(await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
+    return (await this.splitSourceFiles()).kept;
+  }
+
+  /** The source files `sourceFiles()` leaves out, so a check can say what it did not cover. */
+  async skippedSourceFiles(): Promise<string[]> {
+    return (await this.splitSourceFiles()).skipped;
   }
 
   /** The source files at the commit where the branch left `base`. */
@@ -124,6 +128,12 @@ export class Repo {
     });
     if (result.code !== 0) throw new Error(`git diff failed: ${firstLine(result.stderr)}`);
     return result.stdout;
+  }
+
+  private async splitSourceFiles(): Promise<{ kept: string[]; skipped: string[] }> {
+    // Untracked files count too: the checks run when code is written, usually before `git add`. Ignored files stay out.
+    const source = (await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).filter((path) => SOURCE_FILE.test(path));
+    return { kept: source.filter((path) => !NOT_HAND_WRITTEN.test(path)), skipped: source.filter((path) => NOT_HAND_WRITTEN.test(path)) };
   }
 
   private async gitPaths(args: string[]): Promise<string[]> {
