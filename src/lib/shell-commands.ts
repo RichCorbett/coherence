@@ -19,7 +19,7 @@ const RUNS_NEXT_WORD = /^-[a-z]*c$/;
  */
 export function shellCommands(line: string): string[][] {
   const { commands, substitutions, data } = parse(line);
-  if (GH_WORD.test(data) || GH_WORD.test(data.replace(/[\\'"]/g, ""))) return [UNREADABLE];
+  if (GH_WORD.test(data) || GH_WORD.test(data.replace(/\\\n|[\\'"]/g, ""))) return [UNREADABLE];
   return [...commands, ...substitutions.flatMap(shellCommands), ...commands.flatMap(wrapped)];
 }
 
@@ -112,7 +112,7 @@ function wrapped(words: string[]): string[][] {
   return evaluated === -1 ? [] : shellCommands(words.slice(evaluated + 1).join(" "));
 }
 
-/** Splits at shell separators and honours quotes, so quoted text stays one word, and drops heredoc bodies. Substitutions inside double quotes still run, so they are collected. */
+/** Splits at shell separators and honours quotes, so quoted text stays one word, and drops comments and heredoc bodies. Substitutions inside double quotes still run, so they are collected. */
 function parse(line: string): { commands: string[][]; substitutions: string[]; data: string } {
   const commands: string[][] = [];
   const substitutions: string[] = [];
@@ -145,7 +145,7 @@ function parse(line: string): { commands: string[][]; substitutions: string[]; d
       else word += char;
     } else if (quote === '"') {
       if (char === '"') quote = undefined;
-      else if (char === "\\") word += line[++i] ?? "";
+      else if (char === "\\") word += line[++i] === "\n" ? "" : (line[i] ?? "");
       else if (line.startsWith("$(", i) || char === "`") {
         const end = char === "`" ? closingBacktick(line, i) : closingParen(line, i + 1);
         substitutions.push(line.slice(i + (char === "`" ? 1 : 2), end));
@@ -156,7 +156,12 @@ function parse(line: string): { commands: string[][]; substitutions: string[]; d
       quoted = true;
       word ??= "";
     } else if (char === "\\") {
-      word = (word ?? "") + (line[++i] ?? "");
+      // A backslash-newline is removed, as the shell removes it, so it joins the text on either side into one word.
+      if (line[++i] !== "\n") word = (word ?? "") + (line[i] ?? "");
+    } else if (char === "#" && word === undefined) {
+      // A # that starts a word comments out the rest of the line, so no heredoc can open in it.
+      const newline = line.indexOf("\n", i);
+      i = (newline === -1 ? line.length : newline) - 1;
     } else if (heredocAt(line, i)) {
       // Only here, outside quotes, is `<<` a heredoc. Its body starts after this line and is data, so it is skipped, not parsed.
       const heredoc = heredocAt(line, i)!;

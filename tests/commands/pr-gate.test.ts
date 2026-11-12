@@ -226,6 +226,26 @@ test("text the parser takes for data cannot hide a command: data that names gh i
   }
 });
 
+test("a comment opens no heredoc, and a backslash-newline joins a word as the shell joins it", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const split = "g\\\nh pr create --base main";
+  for (const command of [
+    // The shell runs this as gh pr create: the << is in a comment, and g\<newline>h is gh.
+    `echo hi # <<EOF\n${split}\nEOF`,
+    `gh pr \\\ncreate --base main`,
+    // Data the parser misreads must not hide a split name either: an arithmetic << it takes for a heredoc, and a quote it takes for an open one.
+    `echo hi; ((1 << EOF))\n${split}`,
+    `cat <<E-OF\n"\nE-OF\n${split}`,
+  ]) {
+    assert.equal((await runHook(repo.root, command)).length, 1, command);
+  }
+  // The line after a commented << is a command, not heredoc data. A # inside a word is not a comment; one starting a word after a continued line is.
+  for (const command of ["echo hi # <<EOF\ngh pr list", "echo a#b", "git log --format=%h#x", `echo ""#x`, "ls \\\n# a note <<EOF"]) {
+    assert.deepEqual(await runHook(repo.root, command), [], command);
+  }
+});
+
 test("refuses to open a PR from a branch with no review, and names the branch and the way forward", async (t) => {
   setEnv(t, { CLAUDE_PLUGIN_ROOT: "/plugin" });
   const repo = await tempRepo({ "a.ts": "x\n" });
