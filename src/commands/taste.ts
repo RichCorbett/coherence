@@ -25,11 +25,6 @@ export class TasteCommand extends BaseCommand {
 
   private async add(invocation: Invocation, preference: string): Promise<number> {
     if (preference === "") return this.refuse(invocation);
-    // The log is one entry per line and is printed under a heading, so a line break would forge entries or headings.
-    if (/[\r\n]/.test(preference)) {
-      invocation.printError("a preference is one line: no line breaks");
-      return Exit.usage;
-    }
     const entries = await appendTaste(preference);
     invocation.print(`recorded; ${entries} waiting to be condensed`);
     if (entries >= CONDENSE_AT) invocation.print("The log is full: condense it now, as the coherence:taste skill describes.");
