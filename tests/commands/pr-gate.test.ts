@@ -168,13 +168,17 @@ test("a quoted << or a quoted ) does not hide the command after it", async () =>
     `echo "$(echo ')')"; "$GH" "$P" create`,
     `echo "$(echo \\))"; "$GH" "$P" create`,
     `echo "$(echo "$(echo ")")")"; "$GH" "$P" create`,
+    // A ) ending a case pattern is not the end of the substitution, and a backslash may escape a backtick.
+    `echo "$(case x in a) true;; esac; "$GH" "$P" create)"`,
+    `echo "$(echo "$(case x in a) true;; esac)"; "$GH" "$P" create)"`,
+    "echo \"`echo \\`x\\` ; $G $P create`\"",
     // A delimiter the parser cannot read is not trusted to end a body.
     `cat <<E-OF\n"$GH" "$P" create`,
   ]) {
     assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
   }
   // Real heredoc bodies stay data, even with quotes and parentheses in them.
-  for (const command of [`git commit -m "$(cat <<'EOF'\nit's ) and "<<x\nEOF\n)"`, `cat <<EOF\n"$GH" "$P" create\nEOF`]) {
+  for (const command of [`git commit -m "$(cat <<'EOF'\nit's ) and "<<x\nEOF\n)"`, `cat <<EOF\n"$GH" "$P" create\nEOF`, "git commit -m \"$(cat <<'EOF'\ncase x in a) y;; esac\n`z`\nEOF\n)\""]) {
     assert.deepEqual(await runHook(repo.root, command), [], command);
   }
 });

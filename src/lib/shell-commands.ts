@@ -3,12 +3,27 @@ import { basename } from "node:path";
 /** `<<` and its delimiter, which must be followed by something that ends the word, so a delimiter this cannot read is never trusted to end a body. */
 const HEREDOC_OPEN = /<<-?[ \t]*(['"]?)([A-Za-z_]\w*)\1(?![^\s;&|()<>])/y;
 
+/**
+ * Thrown for a substitution whose end this cannot find with confidence. Reading on past a guessed end could leave real commands
+ * inside what the outer pass takes for quoted text, so shellCommands answers with UNREADABLE_COMMAND, which the PR gate refuses.
+ */
+const UNREADABLE = new Error("a substitution this cannot read");
+const UNREADABLE_COMMAND = ["gh", "pr", "create"];
+
+const CASE = /^case\s/;
 const SHELL = /^(ba|z|da)?sh$/;
 const RUNS_NEXT_WORD = /^-[a-z]*c$/;
 
 /** Every command a shell line would run, as words, including those inside substitutions, `sh -c` and `eval`. */
 export function shellCommands(line: string): string[][] {
-  const { commands, substitutions } = parse(line);
+  let parsed;
+  try {
+    parsed = parse(line);
+  } catch (error) {
+    if (error === UNREADABLE) return [UNREADABLE_COMMAND];
+    throw error;
+  }
+  const { commands, substitutions } = parsed;
   return [...commands, ...substitutions.flatMap(shellCommands), ...commands.flatMap(wrapped)];
 }
 
@@ -156,8 +171,10 @@ function parse(line: string): { commands: string[][]; substitutions: string[] } 
   return { commands, substitutions };
 }
 
+/** A backslash in a backtick substitution may escape a backtick, which this does not pair, so such a substitution is unreadable. */
 function closingBacktick(line: string, open: number): number {
   const end = line.indexOf("`", open + 1);
+  if (line.slice(open, end === -1 ? line.length : end).includes("\\")) throw UNREADABLE;
   return end === -1 ? line.length : end;
 }
 
@@ -196,6 +213,9 @@ function closingParen(line: string, open: number): number {
       const heredoc = heredocAt(line, i)!;
       bodies.push(heredoc.delimiter);
       i = heredoc.end - 1;
+    } else if (char === "c" && CASE.test(line.slice(i, i + 5)) && /[\s;&|(]/.test(line[i - 1] ?? " ")) {
+      // A `)` ends a case pattern, not the substitution, and pairing case with esac is not attempted.
+      throw UNREADABLE;
     } else if (char === "(") depth++;
     else if (char === ")" && --depth === 0) return i;
   }
