@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { readPluginFile } from "./plugin-files.ts";
@@ -40,11 +41,23 @@ export async function undoLastTaste(): Promise<string | undefined> {
 export async function condenseTaste(rules: string): Promise<number> {
   await mkdir(dirname(logPath()), { recursive: true });
   const entries = await readEntries();
+  // The rewrite is lossy, so the rules it replaces are kept; the archive already keeps the entries whole, with their dates.
+  await backUpRules();
   // In this order so a crash can leave an entry in two places but never lose a preference.
   await writeFile(rulesPath(), `${rules.trim()}\n`);
   await appendFile(archivePath(), asLines(entries));
   await rm(logPath(), { force: true });
   return entries.length;
+}
+
+// Written under a temporary name and renamed, so a backup exists only once it is complete.
+async function backUpRules(): Promise<void> {
+  if (!existsSync(rulesPath())) return;
+  // Milliseconds and a random suffix, so two condenses in the same second never share a name and overwrite a backup.
+  const stamp = `${new Date().toISOString().replace(/:/g, "-")}-${randomUUID().slice(0, 8)}`;
+  const temporary = configFile(`taste-rules.${stamp}.tmp`);
+  await copyFile(rulesPath(), temporary);
+  await rename(temporary, configFile(`taste-rules.${stamp}.md`));
 }
 
 async function readEntries(): Promise<string[]> {

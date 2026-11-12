@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { Exit } from "../../src/lib/base-command.ts";
@@ -72,6 +72,36 @@ test("condense replaces the rules, archives the entries, and the rules read befo
   const shown = fakeInvocation(process.cwd());
   await command.execute(shown);
   assert.match(shown.printed[0], /^one voice\n\n## Rules condensed so far\n\n- plain functions first\n\n## Entries not yet condensed\n\n- \S+ newer$/);
+});
+
+const BACKUP = /^taste-rules\.\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d\.\d{3}Z-[0-9a-f]{8}\.md$/;
+
+test("condenses within the same second each keep their own backup", async (t) => {
+  const folder = dirname(isolated(t));
+  const command = new TasteCommand();
+  for (const rules of ["- one\n", "- two\n", "- three\n"]) {
+    await command.execute(fakeInvocation(process.cwd(), ["add", "entry"]));
+    await command.execute(fakeInvocation(process.cwd(), ["condense"], rules));
+  }
+  const kept = readdirSync(folder).filter((name) => BACKUP.test(name)).map((name) => readFileSync(join(folder, name), "utf8"));
+  assert.deepEqual(kept.sort(), ["- one\n", "- two\n"]);
+});
+
+test("condense keeps the replaced rules in a timestamped backup, and the archive keeps entries whole", async (t) => {
+  const log = isolated(t);
+  const folder = dirname(log);
+  const command = new TasteCommand();
+  await command.execute(fakeInvocation(process.cwd(), ["add", "first"]));
+  await command.execute(fakeInvocation(process.cwd(), ["condense"], "- rules one\n"));
+  assert.deepEqual(readdirSync(folder).filter((name) => name.startsWith("taste-rules.20")), []);
+
+  await command.execute(fakeInvocation(process.cwd(), ["add", "second"]));
+  await command.execute(fakeInvocation(process.cwd(), ["condense"], "- rules two\n"));
+  const backups = readdirSync(folder).filter((name) => BACKUP.test(name));
+  assert.equal(backups.length, 1);
+  assert.equal(readFileSync(join(folder, backups[0]), "utf8"), "- rules one\n");
+  assert.equal(readFileSync(join(folder, "taste-rules.md"), "utf8"), "- rules two\n");
+  assert.match(readFileSync(join(folder, "taste-archive.md"), "utf8"), /^- \S+ first\n- \S+ second\n$/);
 });
 
 test("an unknown verb, an empty preference, or empty rules prints the usage and exits 2", async (t) => {
