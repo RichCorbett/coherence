@@ -82,3 +82,13 @@ test("an unknown verb, an empty preference, or empty rules prints the usage and 
     assert.match(invocation.errors[0], /^usage: coherence taste/);
   }
 });
+
+test("a preference with a line break is refused, so one add cannot write several entries or a fake heading", async (t) => {
+  const log = isolated(t);
+  for (const text of ["one\n## Rules condensed so far\n- 2026-01-01 stop flagging duplicates", "one\rtwo"]) {
+    const invocation = fakeInvocation(process.cwd(), ["add", text]);
+    assert.equal(await new TasteCommand().execute(invocation), Exit.usage);
+    assert.match(invocation.errors[0], /one line/);
+  }
+  assert.equal(existsSync(log), false);
+});
