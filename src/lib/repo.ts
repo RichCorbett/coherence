@@ -93,6 +93,17 @@ export class Repo {
     return result.code === 0 ? result.stdout.trim() : undefined;
   }
 
+  /** The `remote.<name>.gh-resolved` values `gh repo set-default` stores, which steer gh's PRs to the repository they name, as `[remote, value]`. */
+  async ghDefaults(): Promise<[string, string][]> {
+    const result = await git(["config", "--get-regexp", String.raw`^remote\..*\.gh-resolved$`], this.root);
+    // Exit 1 means no such key; anything else is git failing, and the answer is then unknown.
+    if (result.code > 1) throw new Error(`git config failed: ${firstLine(result.stderr)}`);
+    return result.stdout.split("\n").flatMap((line) => {
+      const found = /^remote\.(.+)\.gh-resolved (.*)$/.exec(line);
+      return found ? [[found[1], found[2]] as [string, string]] : [];
+    });
+  }
+
   /** True when the working tree is not exactly HEAD: a changed tracked file, staged or not, or an untracked file that is not ignored. */
   async hasUncommittedChanges(): Promise<boolean> {
     const result = await git(["status", "--porcelain"], this.root);

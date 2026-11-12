@@ -93,6 +93,12 @@ export class PrGateCommand extends BaseCommand {
 
   private async judge(invocation: Invocation, cwd: string, args: string[]): Promise<number> {
     const repo = await Repo.open(cwd);
+    // gh follows a stored default repository the way it follows GH_REPO, and the hook can read it from git config, unlike a variable from an earlier Bash call.
+    // Only origin's `base`, the repository this folder's origin names, is known to be this folder's; any other default, or one the gate cannot read, may point elsewhere.
+    for (const [remote, value] of await repo.ghDefaults()) {
+      if (remote === "origin" && value === "base") continue;
+      return this.cannotCheck(invocation, `remote.${remote}.gh-resolved is ${value.slice(0, 80)}, so gh may open the PR somewhere other than this folder's repository. Run git config --unset remote.${remote}.gh-resolved, then open the PR again`);
+    }
     const branch = headBranch(args) ?? (await repo.currentBranch());
     if (!branch) return this.cannotCheck(invocation, "HEAD is detached. Check out the PR's branch, or name it with --head, then open the PR again");
     const tip = await repo.branchCommit(branch);
