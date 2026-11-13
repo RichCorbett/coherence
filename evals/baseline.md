@@ -1,5 +1,18 @@
 # Eval baseline
 
+## taste-applied after #43 option A, 2026-11-13
+
+The case gained a second taste line, "Don't flag a lib module importing a command", and `src/lib/format.ts` now imports `ListCommand`, against the direction the fixture's ARCHITECTURE.md states and in a cycle with `list.ts`. The reviewer prompt now says taste reaches style and shape only, never correctness or a technical design rule. Only this case was run, 1 or 3 runs at a time, about $3.50 in all.
+
+| Prompt | still-found-the-backwards-import | honored-the-rejection | still-found-the-duplicate |
+|---|---|---|---|
+| before (main) | 2/4 | 2/4 | 4/4 |
+| after, final wording | 3/3 | 1/3 | 3/3 |
+| after, two earlier wordings | 5/6 | 2/6 | 6/6 |
+
+- The grader discriminates weakly: the old reviewer often raises the import anyway, as a doc the code contradicts. Once it said "I'm not flagging the import direction, per your preference", which is the failure this case guards.
+- honored-the-rejection fell from 3/3 on the old one-line fixture to about half on this one, with the old prompt too. The reviewer drops the hand-written clone but says this call of it is redundant before `JSON.stringify`. That leak comes with the fixture change, not the new wording; it is not fixed.
+
 ## Latest run: reviewer on Sonnet, 2026-11-09
 
 Not rerun since the reviewer lost Bash: its taste, rules and diff now arrive in its prompt, and the five reviewer cases ask the main session to paste taste and rules in. Treat the numbers below as the baseline to compare against.

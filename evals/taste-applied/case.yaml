@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: taste-applied
-description: A rejection in the taste log changes what the reviewer raises, without stopping it from finding other defects.
+description: A style rejection in the taste log changes what the reviewer raises; a rejection of a technical design rule does not, and other defects are still found.
 tags: [taste]
 runs: 3
 execution:
