@@ -16,19 +16,16 @@ const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c",
 // The tools that read the copy obey comments in the code that switch their findings off, and have no option to stop.
 // In the copy those words are written in capitals, which neither obeys (measured 2026-11-17), so the code under review cannot
 // silence the owner's checks; the length is the same, so every line and column stays where it was.
-// Only after a comment opener on the same line (//, /*, #, or a block comment's leading *), so an import path or a string that holds
-// the word stays as written.
-const SUPPRESSION = /((?:\/\/|\/\*|#|^[ \t]*\*)[^\n]*?)(ast-grep-ignore|fallow-ignore)/gm;
+// Only where the word opens a comment (//, /*, a block comment's leading *, or # for ast-grep's other languages): the tools obey it
+// nowhere else, not even later in a comment (measured 2026-11-17), so a URL, an import path or other text that holds it stays as written.
+const SUPPRESSION = /((?:\/\/|\/\*|^[ \t]*\*)[ \t]*)(ast-grep-ignore|fallow-ignore)|(#[ \t]*)(ast-grep-ignore)/gm;
 
 /** Rewrites the tools' suppression comments in `file`, a copy, so that no tool obeys them. */
 export async function disarmSuppressions(file: string): Promise<void> {
   const text = await readFile(file, "utf8");
-  let disarmed = text;
-  // Again until nothing changes, for a line holding the word twice.
-  for (let before = ""; before !== disarmed; ) {
-    before = disarmed;
-    disarmed = disarmed.replace(SUPPRESSION, (_, lead: string, word: string) => lead + word.toUpperCase());
-  }
+  const disarmed = text.replace(SUPPRESSION, (_, lead?: string, word?: string, hash?: string, hashed?: string) =>
+    lead !== undefined ? lead + word!.toUpperCase() : hash! + hashed!.toUpperCase(),
+  );
   if (disarmed !== text) await writeFile(file, disarmed);
 }
 

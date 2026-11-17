@@ -22,9 +22,10 @@ export class ReinventedCheck extends BaseCheck {
     return groups.flatMap(({ instances }) =>
       instances.map((here) => {
         // At most three others each, so a group of many similar pieces gives one line per piece, not every pair.
-        const others = instances.filter((other) => other !== here);
-        const named = others.slice(0, MAX_NAMED).map((other) => `${other.file}:${other.start_line}-${other.end_line}`);
-        const more = others.length > MAX_NAMED ? ` and ${others.length - MAX_NAMED} more` : "";
+        // Never more than the named ones plus one are looked at, so a group of thousands costs one pass.
+        const others = instances.slice(0, MAX_NAMED + 1).filter((other) => other !== here).slice(0, MAX_NAMED);
+        const named = others.map((other) => `${other.file}:${other.start_line}-${other.end_line}`);
+        const more = instances.length - 1 > MAX_NAMED ? ` and ${instances.length - 1 - MAX_NAMED} more` : "";
         const message = `lines ${here.start_line}-${here.end_line} do what ${named.join(", ")}${more} already does under other names; reuse one`;
         return this.finding(here.file, message, { line: here.start_line, key: `like ${others[0].file}` });
       }),
