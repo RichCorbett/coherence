@@ -58,3 +58,7 @@ _Avoid_: preferences, style guide
 **Baseline**:
 The findings the owner accepted as they stood on one day, which later checks leave out.
 _Avoid_: allowlist, suppressions, ignore list
+
+**Brief**:
+What the agent reads before it writes in a folder: the rules, the owner's taste, and the names already exported nearby.
+_Avoid_: context, primer

@@ -20,7 +20,7 @@ function fixtureDocs(): string[] {
 }
 
 test("the docs scan reaches every fixture's README and ARCHITECTURE", () => {
-  assert.equal(fixtureDocs().length, 10);
+  assert.equal(fixtureDocs().length, 12);
 });
 
 test("eval fixture docs do not hand the reviewer the shape the graders look for", () => {

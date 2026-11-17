@@ -86,3 +86,14 @@ The taste cases, 3 runs each: the skill fired and recorded a new preference 3 of
 After plain preferences, the cross-file instructions and the merge call, 3 runs each: clean 3/3 on both graders, no-shape 9/9, taste-capture 6/6, taste-one-off 3/3, overbuilt 8/9, reinvented 8/9 and taste-applied 5/6. All three misses are on "kept the good shape" or "honored the preference".
 
 These fixtures are tiny, so this shows the reviewer can spot each kind of defect, not that it holds up across a large repo.
+
+## brief-with / brief-without (#57), 2026-11-17
+
+A writing task (add a `summary` command) whose helper `plural` already exists in `src/lib/format.ts` and is used by no command. `brief-with` runs `coherence brief src/commands` first; `brief-without` does not. Graded on whether the new command calls `plural` instead of hand-rolling it.
+
+| case | runs | pass | cost per run |
+|---|---|---|---|
+| brief-without | 3 | 3 | $0.149 |
+| brief-with | 3 | 3 | $0.157 |
+
+A ceiling result: the agent found the helper on its own every time, so this case cannot show what the brief adds. A harder case (a larger repo, or a helper in a sibling folder the task does not mention) is needed before claiming an effect.

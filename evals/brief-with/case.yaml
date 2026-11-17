@@ -1,0 +1,15 @@
+schema_version: "1.1"
+name: brief-with
+description: A writing task whose helper already exists in src/lib; the agent reads coherence brief first. Compare with brief-without (#57).
+tags: [writing]
+runs: 1
+execution:
+  max_turns: 30
+  timeout_seconds: 900
+  allowed_tools: [Read, Glob, Grep, Bash, Write, Edit]
+  prompt: |
+    Before writing anything, run `./.coherence-bin/coherence brief src/commands` and read its output.
+    Add a command `summary` in `src/commands/summary.ts`, wired up the way the other commands are, that prints one line per day with bookings: the day, then how many bookings, with the right singular or plural ("1 booking", "3 bookings").
+    Do not run or test it; just write it. Then print the full contents of `src/commands/summary.ts` as your final message.
+context:
+  scaffold_script: scaffold.sh
