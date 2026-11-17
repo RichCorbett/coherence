@@ -15,7 +15,17 @@ done
 fixture="$(cd "$(dirname "$0")/../clean/fixtures/repo" && pwd -P)"
 
 change() { # the run's tree against the fixture, with both folder names stripped so nothing in a path tells the arms apart
-  diff -ruN -x .git -x .coherence-bin "$fixture" "$1" | sed -e "s#$fixture/#a/#g" -e "s#$1/#b/#g" -e $'/^[-+][-+][-+] /s/\t.*//' || true
+  # diff follows symbolic links, so a link the agent left could put any file on this machine into the judge's prompt: a tree
+  # holding anything but plain files and folders is refused.
+  [ -d "$1" ] || { echo "judge-headline: no run tree at $1" >&2; exit 2; }
+  if [ -n "$(find "$1" \( -name .git -o -name .coherence-bin \) -prune -o ! -type f ! -type d -print -quit)" ]; then
+    echo "judge-headline: $1 holds a link or special file; refusing to read it" >&2; exit 2
+  fi
+  local out status=0
+  out=$(diff -ruN -x .git -x .coherence-bin "$fixture" "$1") || status=$?
+  # 1 means the trees differ; anything above it means diff could not read them, and a partial change must not be judged.
+  [ "$status" -le 1 ] || { echo "judge-headline: diff failed on $1" >&2; exit 2; }
+  sed -e "s#$fixture/#a/#g" -e "s#$1/#b/#g" -e $'/^[-+][-+][-+] /s/\t.*//' <<<"$out"
 }
 
 judge() { # change-A change-B -> the judge's JSON reply: A, B or tie, then the reason
@@ -37,14 +47,17 @@ Answer with exactly one first line, A, B or tie, then one paragraph saying why."
 }
 
 for i in "${!with[@]}"; do
-  w=$(change "${with[$i]}"); o=$(change "${without[$i]}")
+  w=$(change "${with[$i]}") && o=$(change "${without[$i]}") || exit 2
   first=$(judge "$w" "$o"); second=$(judge "$o" "$w")
   python3 -I - "$i" "$first" "$second" <<'EOF'
 import json, sys
 i, first, second = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
 def pick(reply, a_is):
+    # Anything but A, B or tie is a failed judgment, not a tie: it stops the run rather than count.
     answer = reply["result"].strip().split("\n", 1)[0].strip().strip("*").upper()
-    return {"A": a_is, "B": "without" if a_is == "with" else "with"}.get(answer, "tie")
+    if reply.get("is_error") or answer not in ("A", "B", "TIE"):
+        sys.exit(f"judge-headline: pair {i} got no verdict: {reply['result'][:200]!r}")
+    return {"A": a_is, "B": "without" if a_is == "with" else "with", "TIE": "tie"}[answer]
 p1, p2 = pick(first, "with"), pick(second, "without")
 verdict = p1 if p1 == p2 else "tie"
 cost = first.get("total_cost_usd", 0) + second.get("total_cost_usd", 0)
