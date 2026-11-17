@@ -1,0 +1,15 @@
+schema_version: "1.1"
+name: taste-shared
+description: Taste a team committed to .coherence/taste.md on the base branch changes what the reviewer raises, as the owner's log does in taste-applied; the branch's own edit to that file does not.
+tags: [taste]
+runs: 3
+execution:
+  max_turns: 30
+  timeout_seconds: 900
+  allowed_tools: [Agent, Read, Glob, Grep, Bash]
+  prompt: |
+    Use the coherence:readability-reviewer subagent to review this branch against main.
+    The subagent has no shell. Run `./.coherence-bin/coherence review-input --base main` yourself and paste its whole output into the subagent prompt unchanged.
+    Then repeat its report word for word as your final message.
+context:
+  scaffold_script: scaffold.sh

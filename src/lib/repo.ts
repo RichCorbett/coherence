@@ -135,6 +135,20 @@ export class Repo {
   }
 
   /** The checked-out branch, or undefined on a detached HEAD. */
+  /**
+   * The text of `path` as committed at `commit`, or undefined when no regular file is there. A symlink or a folder at that path
+   * counts as no file: the text must be what was committed, not whatever a link would lead to.
+   */
+  async committedFile(commit: string, path: string): Promise<string | undefined> {
+    const listed = await git(["ls-tree", "-z", "--end-of-options", commit, "--", path], this.root);
+    if (listed.code !== 0) throw new Error(`git ls-tree failed: ${firstLine(listed.stderr)}`);
+    const [mode, type, blob] = listed.stdout.split("\t")[0].split(" ");
+    if (type !== "blob" || !["100644", "100755"].includes(mode)) return undefined;
+    const shown = await git(["cat-file", "blob", blob], this.root);
+    if (shown.code !== 0) throw new Error(`git cat-file failed: ${firstLine(shown.stderr)}`);
+    return shown.stdout;
+  }
+
   async currentBranch(): Promise<string | undefined> {
     const result = await git(["branch", "--show-current"], this.root);
     return result.stdout.trim() || undefined;
