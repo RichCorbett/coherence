@@ -1,6 +1,8 @@
+import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { readPluginFile } from "../lib/plugin-files.ts";
-import { readTaste } from "../lib/taste.ts";
+import { Repo } from "../lib/repo.ts";
+import { readSharedTaste, readTaste } from "../lib/taste.ts";
 
 // A shorter quote, such as "one way", is found in almost any text, so it would vouch for nothing.
 const MIN_WORDS = 4;
@@ -29,16 +31,20 @@ function holds(entry: string, quote: string): boolean {
 /** Says, for each quote a reviewer finding gave as its rule, whether those words appear in the design rules or the owner's taste (#61). */
 export class QuotesCommand extends BaseCommand {
   readonly name = "quotes";
-  readonly usage = "coherence quotes '<quoted rule>'...  (exits 1 when any quote is not found word for word in the rules or taste)";
+  readonly usage =
+    "coherence quotes [--base <ref>] [--] '<quoted rule>'...  (exits 1 when any quote is not found word for word in the rules or taste; with --base, the repo's shared taste at that ref counts too)";
 
   async execute(invocation: Invocation): Promise<number> {
-    if (invocation.args.length === 0) {
+    const { values, positionals } = parseArgs({ args: invocation.args, options: { base: { type: "string" } }, allowPositionals: true });
+    if (positionals.length === 0) {
       invocation.printError(`usage: ${this.usage}`);
       return Exit.usage;
     }
-    const standard = entries(`${await readPluginFile("rules/design.md")}\n${await readTaste()}`);
+    const repo = values.base === undefined ? undefined : await Repo.open(invocation.cwd);
+    const shared = repo && values.base !== undefined ? await readSharedTaste(repo, await repo.resolveCommit(values.base)) : undefined;
+    const standard = entries(`${await readPluginFile("rules/design.md")}\n${await readTaste(shared)}`);
     let missing = 0;
-    for (const arg of invocation.args) {
+    for (const arg of positionals) {
       const quote = plain(arg).replace(/^["“]|["”]$/g, "");
       const found = quote.split(" ").length >= MIN_WORDS && standard.some((entry) => holds(entry, quote));
       if (!found) missing++;
