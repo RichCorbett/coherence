@@ -23,15 +23,18 @@ const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c",
 // JavaScript, where # opens no comment. A string holding an opener before the word, like "// ast-grep-ignore", is still rewritten:
 // telling it from a comment takes a lexer for every language, and the cost is a rule missing that one literal, never a check
 // switched off.
-const SLASH_SUPPRESSION = /(\/\/[^\p{Alphabetic}\n]*|\/\*[^\p{Alphabetic}]*|^[^\S\n]*\*[^\p{Alphabetic}\n]*)(ast-grep-ignore|fallow-ignore)/gmu;
-const HASH_SUPPRESSION = /(#[^\p{Alphabetic}\n]*)(ast-grep-ignore)/gu;
+// The word comes first and the opener is looked for behind it: looking forward from every opener took time growing with the square
+// of a line of slashes, 3.3s for 80 000 of them (measured 2026-11-17), and the copy is made inside every check that reads it.
+const SLASH_SUPPRESSION =
+  /(?:ast-grep-ignore|fallow-ignore)(?<=(?:\/\/[^\p{Alphabetic}\n]*|\/\*[^\p{Alphabetic}]*|^[^\S\n]*\*[^\p{Alphabetic}\n]*)(?:ast-grep-ignore|fallow-ignore))/gmu;
+const HASH_SUPPRESSION = /ast-grep-ignore(?<=#[^\p{Alphabetic}\n]*ast-grep-ignore)/gu;
 const HASH_COMMENTS = /\.(py|rb)$/;
 
 /** Rewrites the tools' suppression comments in `file`, a copy, so that no tool obeys them. */
 export async function disarmSuppressions(file: string): Promise<void> {
   const text = await readFile(file, "utf8");
   const suppression = HASH_COMMENTS.test(file) ? HASH_SUPPRESSION : SLASH_SUPPRESSION;
-  const disarmed = text.replace(suppression, (_, lead: string, word: string) => lead + word.toUpperCase());
+  const disarmed = text.replace(suppression, (word) => word.toUpperCase());
   if (disarmed !== text) await writeFile(file, disarmed);
 }
 

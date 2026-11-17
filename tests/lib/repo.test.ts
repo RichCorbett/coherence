@@ -97,3 +97,11 @@ test("disarming rewrites the tools' suppression comments, not import paths or st
   await disarm(python);
   assert.equal(readFileSync(python, "utf8"), "#\u00a0AST-GREP-IGNORE\nx = 7 // 2  # AST-GREP-IGNORE: no-floor\ny = '// fallow-ignore-file'\n");
 });
+
+test("disarming a line of 200 000 slashes takes well under the 20s that looking forward from every opener took", async () => {
+  const file = join(tempFolder(), "a.ts");
+  writeFileSync(file, `${"/".repeat(200_000)}\n`);
+  const start = Date.now();
+  await disarm(file);
+  assert.ok(Date.now() - start < 2000, `took ${Date.now() - start}ms`);
+});
