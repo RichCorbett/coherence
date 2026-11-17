@@ -1,0 +1,5 @@
+id: no-console-log
+language: TypeScript
+severity: warning
+message: console.log left in; remove it or use the project logger
+rule: { pattern: console.log($$$ARGS) }

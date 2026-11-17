@@ -3,11 +3,12 @@ import { chmodSync, existsSync, lstatSync, readdirSync, rmSync, symlinkSync } fr
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { test, type TestContext } from "node:test";
-import { installTools, runPinnedFallow, runPinnedTool, runProcess } from "../../src/lib/process.ts";
+import { installTools, runPinnedProgram, runPinnedTool, runProcess } from "../../src/lib/process.ts";
 import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 
-// This machine's native fallow program, where npm puts it; on Linux the musl build, which runs on glibc too.
+// This machine's native programs, where npm puts them; on Linux fallow's musl build, which runs on glibc too, and ast-grep's glibc one.
 const FALLOW = `@fallow-cli/${process.platform}-${process.arch}${process.platform === "linux" ? "-musl" : ""}/fallow`;
+const AST_GREP = `@ast-grep/cli-${process.platform}-${process.arch}${process.platform === "linux" ? "-gnu" : ""}/ast-grep`;
 const REFUSED = /^coherence: the tool cache at .+ is incomplete or not a plain folder; delete it and run again$/;
 // The child gives up after 3s by itself, so a missing stdin end fails this test instead of hanging the run.
 const WAITS_FOR_STDIN = "process.stdin.resume(); process.stdin.on('end', () => process.exit(0)); setTimeout(() => process.exit(3), 3000);";
@@ -100,24 +101,27 @@ test("a failed install is tried again on the next use in the same process", asyn
   assert.equal((await runPinnedTool("madge/bin/cli.js", ["--version"])).code, 0);
 });
 
-test("an install that npm finished without fallow's native program is refused, not kept as complete", async (t) => {
-  setEnv(t, { XDG_CACHE_HOME: tempFolder() });
-  // npm skips an optional dependency it cannot fetch and still exits 0.
-  stubNpm(t, installs(".", false));
+for (const missing of [FALLOW, AST_GREP]) {
+  test(`an install that npm finished without the native program ${missing} is refused, not kept as complete`, async (t) => {
+    setEnv(t, { XDG_CACHE_HOME: tempFolder() });
+    // npm skips an optional dependency it cannot fetch and still exits 0.
+    stubNpm(t, installs(".", missing));
 
-  await assert.rejects(installTools(), { message: REFUSED });
-});
+    await assert.rejects(installTools(), { message: REFUSED });
+  });
+}
 
 test("fallow's native program is run itself, not through its Node launcher, so a time limit stops the program doing the work", async () => {
   // Only the launcher adds a "verified:" line to the version.
-  const result = await runPinnedFallow(["--version"]);
+  const result = await runPinnedProgram("fallow", ["--version"]);
 
   assert.deepEqual(result, { code: 0, stdout: "fallow 3.43.2\n", stderr: "" });
 });
 
-/** Shell lines making a stub install in `root`: empty entry scripts and, unless left out, an empty native fallow program. */
-function installs(root: string, fallow = true): string {
-  const files = [`${root}/node_modules/madge/bin/cli.js`, `${root}/node_modules/jscpd/run-jscpd.js`, ...(fallow ? [`${root}/node_modules/${FALLOW}`] : [])];
+/** Shell lines making a stub install in `root`: empty entry scripts and empty native programs, all but `missing`. */
+function installs(root: string, missing?: string): string {
+  const programs = [FALLOW, AST_GREP].filter((program) => program !== missing).map((program) => `${root}/node_modules/${program}`);
+  const files = [`${root}/node_modules/madge/bin/cli.js`, `${root}/node_modules/jscpd/run-jscpd.js`, ...programs];
   return files.map((file) => `mkdir -p "$(dirname "${file}")" && touch "${file}"`).join("\n");
 }
 

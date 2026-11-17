@@ -1,0 +1,7 @@
+id: no-empty-catch
+language: TypeScript
+severity: warning
+message: an empty catch hides the error; handle it or say why it is safe to ignore
+rule:
+  kind: catch_clause
+  has: { field: body, regex: "^\\{\\s*\\}$" }

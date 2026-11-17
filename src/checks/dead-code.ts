@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
-import { runPinnedFallow, withTempFolder } from "../lib/process.ts";
+import { runPinnedProgram, withTempFolder } from "../lib/process.ts";
 import type { Repo } from "../lib/repo.ts";
 
 type Unused = { path: string; export_name: string; line?: number };
@@ -46,7 +46,7 @@ async function fallow(repo: Repo, folder: string): Promise<Report> {
   await repo.copySourceFiles(copy);
   await writeFile(config, "{}");
   const env = { FALLOW_TELEMETRY_DISABLED: "1", FALLOW_UPDATE_CHECK: "off", FALLOW_CACHE_DIR: cache };
-  const result = await runPinnedFallow([...FALLOW_ARGS, "--root", copy, "--config", config], env);
+  const result = await runPinnedProgram("fallow", [...FALLOW_ARGS, "--root", copy, "--config", config], env);
   let report: Report;
   try {
     report = JSON.parse(result.stdout);
