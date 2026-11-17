@@ -30,3 +30,13 @@ _Avoid_: user, maintainer
 **Owner state**:
 What only the owner may change: the baseline, the rules and the trusted repos. It lives where the agent under review cannot write.
 _Avoid_: config, settings
+
+### Review
+
+**Gate**:
+The refusal to open a pull request until the branch's current commit has a review whose call was merge.
+_Avoid_: hook, check, PR guard
+
+**Guard**:
+The refusal of an agent's edit to the gate or to owner state.
+_Avoid_: lock, protection
