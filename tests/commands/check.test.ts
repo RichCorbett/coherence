@@ -118,7 +118,8 @@ test("says nothing about skipping when nothing was skipped", async () => {
   const repo = await tempRepo({ "src/real.ts": "export const r = 1;\n" });
   const invocation = fakeInvocation(repo.root);
   await new CheckCommand().execute(invocation);
-  assert.deepEqual(invocation.printed, ["coherence check: clean"]);
+  assert.ok(!invocation.printed.some((line) => line.includes("skipped")));
+  assert.match(invocation.printed.at(-1) ?? "", /^coherence check: clean/);
 });
 
 test("a failure to count skipped files is reported but does not fail the check", async (t) => {
@@ -129,7 +130,7 @@ test("a failure to count skipped files is reported but does not fail the check",
   const invocation = fakeInvocation(repo.root);
   assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
   assert.ok(invocation.printed.some((line) => line.includes("could not count skipped files: boom")));
-  assert.equal(invocation.printed.at(-1), "coherence check: clean");
+  assert.match(invocation.printed.at(-1) ?? "", /^coherence check: clean/);
 });
 
 class StubCheck extends BaseCheck {
@@ -213,5 +214,5 @@ test("a tracked file deleted without staging the deletion is not checked, and th
   rmSync(join(repo.root, "src/a/two.ts"));
   const invocation = fakeInvocation(repo.root);
   assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
-  assert.equal(invocation.printed.at(-1), "coherence check: clean");
+  assert.match(invocation.printed.at(-1) ?? "", /^coherence check: clean/);
 });

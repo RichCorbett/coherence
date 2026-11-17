@@ -6,6 +6,7 @@ import { saveBaseline, withoutBaseline } from "../lib/baseline.ts";
 import { stopRunning } from "../lib/process.ts";
 import { Repo } from "../lib/repo.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
+import { DeadCodeCheck } from "../checks/dead-code.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
 import { FirstImportCheck } from "../checks/first-import.ts";
 import { FlatFolderCheck } from "../checks/flat-folder.ts";
@@ -15,6 +16,7 @@ const CHECKS: BaseCheck[] = [
   new DuplicatesCheck(),
   new FlatFolderCheck(),
   new FirstImportCheck(),
+  new DeadCodeCheck(),
 ];
 
 /** Runs every deterministic rule, so reviewers can spend their attention on judgment. */

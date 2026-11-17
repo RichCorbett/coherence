@@ -52,7 +52,8 @@ test("through check --base, the first import is a note and the branch stays clea
   const invocation = fakeInvocation(repo.root, ["--base", "main"]);
   assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
   assert.ok(invocation.printed.some((line) => line.startsWith("src/lib/more.ts [first-import] note: first import from src/lib/")));
-  assert.equal(invocation.printed.at(-1), "coherence check: clean (1 note(s))");
+  // The other note is dead-code's: nothing imports more.ts, and the branch changed it.
+  assert.equal(invocation.printed.at(-1), "coherence check: clean (2 note(s))");
 });
 
 test("a folder the branch point marks export-ignore counts as new, and the check still runs", async () => {

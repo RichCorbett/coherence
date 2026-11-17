@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runPinnedTool, runProcess, withTempFolder } from "./process.ts";
 import { NOT_HAND_WRITTEN } from "./repo.ts";
 
-export const SCRIPT_EXTENSIONS = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
+const SCRIPT_EXTENSIONS = ["ts", "tsx", "js", "jsx", "mjs", "cjs"];
 export const SCRIPT_FILE = new RegExp(`\\.(${SCRIPT_EXTENSIONS.join("|")})$`);
 
 // madge counts `import type` as an import unless told otherwise, which is what we want:
