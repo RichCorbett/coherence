@@ -18,6 +18,7 @@ change() { # the run's tree against the fixture, with both folder names stripped
   # diff follows symbolic links, so a link the agent left could put any file on this machine into the judge's prompt: a tree
   # holding anything but plain files and folders is refused.
   [ -d "$1" ] || { echo "judge-headline: no run tree at $1" >&2; exit 2; }
+  set -- "$(cd "$1" && pwd -P)" # one spelling of the folder, so the header lines below always match it
   if [ -n "$(find "$1" \( -name .git -o -name .coherence-bin \) -prune -o ! -type f ! -type d -print -quit)" ]; then
     echo "judge-headline: $1 holds a link or special file; refusing to read it" >&2; exit 2
   fi
@@ -25,12 +26,12 @@ change() { # the run's tree against the fixture, with both folder names stripped
   out=$(diff -ruN -x .git -x .coherence-bin "$fixture" "$1") || status=$?
   # 1 means the trees differ; anything above it means diff could not read them, and a partial change must not be judged.
   [ "$status" -le 1 ] || { echo "judge-headline: diff failed on $1" >&2; exit 2; }
-  # Only the header lines name the folders; the code lines are left exactly as written.
+  # Only the header lines, and diff's line for a changed binary file, name the folders; code lines are left exactly as written.
   python3 -I -c '
 import sys
 fixture, run = sys.argv[1] + "/", sys.argv[2] + "/"
 for line in sys.stdin.read().splitlines():
-    if line.startswith(("diff ", "--- ", "+++ ")):
+    if line.startswith(("diff ", "--- ", "+++ ", "Binary files ")):
         line = line.split("\t", 1)[0].replace(fixture, "a/").replace(run, "b/")
     print(line)
 ' "$fixture" "$1" <<<"$out"
