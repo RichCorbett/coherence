@@ -66,7 +66,7 @@ Then add something like this to your `CLAUDE.md`, because it's what makes the ag
 
 ```markdown
 Before merging any non-trivial change, run `/coherence:review <base>` and fix what it finds that is real.
-Before writing code, read `coherence rules` and `coherence taste`.
+Before writing code in a folder, run `coherence brief <folder>` and reuse what it lists before writing anything new.
 Whenever I reject or correct a design choice, use the `coherence:taste` skill to record it.
 ```
 
@@ -75,6 +75,8 @@ Whenever I reject or correct a design choice, use the `coherence:taste` skill to
 `bin/coherence` is what the hook and skills call:
 
 ```
+coherence brief <folder or file>...       before writing there: the rules, your taste, and the names
+                                          already exported in that folder and its siblings
 coherence check [--base <ref>]            run the rule checks
 coherence check --save-baseline           record every current finding, so later checks report only new ones
 coherence pr-gate                         the hook on gh pr create

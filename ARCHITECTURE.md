@@ -11,7 +11,7 @@ what comes back for fit, and it does not write code. It gives that check three m
 
 | Moment | Files |
 | --- | --- |
-| Rules | `src/commands/check.ts`, `src/checks/` |
+| Rules | `src/commands/check.ts`, `src/checks/`, and before writing, `src/commands/brief.ts` |
 | Judgment | `skills/review/SKILL.md`, `agents/readability-reviewer.md`, `rules/design.md`, `src/commands/rules.ts`, `src/commands/pr-gate.ts`, `hooks/hooks.json` |
 | Learning | `skills/taste/SKILL.md`, `src/commands/taste.ts`, `src/lib/taste.ts`, `taste/` |
 

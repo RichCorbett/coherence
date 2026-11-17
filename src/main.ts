@@ -1,5 +1,6 @@
 import { text } from "node:stream/consumers";
 import { Exit, type BaseCommand, type Invocation } from "./lib/base-command.ts";
+import { BriefCommand } from "./commands/brief.ts";
 import { CheckCommand } from "./commands/check.ts";
 import { PrGateCommand } from "./commands/pr-gate.ts";
 import { ReviewInputCommand } from "./commands/review-input.ts";
@@ -7,7 +8,7 @@ import { RulesCommand } from "./commands/rules.ts";
 import { TasteCommand } from "./commands/taste.ts";
 
 const check = new CheckCommand();
-const COMMANDS: BaseCommand[] = [check, new PrGateCommand(check), new ReviewInputCommand(), new RulesCommand(), new TasteCommand()];
+const COMMANDS: BaseCommand[] = [new BriefCommand(), check, new PrGateCommand(check), new ReviewInputCommand(), new RulesCommand(), new TasteCommand()];
 
 const [name, ...args] = process.argv.slice(2);
 const command = COMMANDS.find((candidate) => candidate.name === name);
