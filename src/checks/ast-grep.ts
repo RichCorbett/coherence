@@ -39,7 +39,8 @@ export class AstGrepCheck extends BaseCheck {
       for (const rule of rules) {
         const failure = await examplesFail(rule, config, examples);
         if (failure) process.stderr.write(`coherence check: skipped the ast-grep rule ${rule.file}: ${failure}\n`);
-        else found.push(...(await scan(rule.file, config, [copy])).map((match) => ({ ...match, file: relative(copy, match.file) })));
+        // One at a time: a rule matching a common construct can return more matches than a call takes arguments.
+        else for (const match of await scan(rule.file, config, [copy])) found.push({ ...match, file: relative(copy, match.file) });
       }
       return found;
     });
@@ -90,7 +91,7 @@ async function disarmSuppressions(file: string): Promise<void> {
 async function examplesFail(rule: Rule, config: string, folder: string): Promise<string | undefined> {
   if (!rule.match || !rule.clean) return "it needs a .match. and a .clean. example beside it";
   // ast-grep reads several rules from one file, and they would share one verdict, so one that never matches could hide.
-  if ((await readFile(rule.file, "utf8")).split(/^---\s*$/m).filter((part) => part.trim() !== "").length > 1) {
+  if ((await readFile(rule.file, "utf8")).split(/^---(?:[ \t].*)?$/m).filter((part) => part.trim() !== "").length > 1) {
     return "it holds more than one rule; give each its own file and examples";
   }
   const [match, clean] = [join(folder, basename(rule.match)), join(folder, basename(rule.clean))];
