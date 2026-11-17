@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { AstGrepCheck } from "../../src/checks/ast-grep.ts";
@@ -129,4 +129,19 @@ test("the example rules in tests/fixtures/ast-grep-rules pass their own examples
   const findings = await report(Object.fromEntries(matches.map(([name, text]) => [`src/${name}`, text])));
   assert.equal(written.join(""), "");
   assert.deepEqual(findings.map((line) => line.split(":")[0]), matches.map(([name]) => `src/${name}`).sort());
+});
+
+test("the repo's ast-grep-ignore comments cannot switch off the owner's rules, and every line keeps its number", async (t) => {
+  ownerRules(t, NO_LOG);
+  const lines = ["// ast-grep-ignore", "console.log(1);", "// ast-grep-ignore: no-log", "console.log(2);", "console.log(3); // ast-grep-ignore"];
+  const findings = await report({ "src/a.ts": `${lines.join("\n")}\n`, "src/b.ts": "// ast-grep-ignore\nconsole.log(4);\n" });
+  assert.deepEqual(findings.map((line) => line.split(" ")[0]), ["src/a.ts:2", "src/a.ts:4", "src/a.ts:5", "src/b.ts:2"]);
+});
+
+test("a rules folder that cannot be read fails the check instead of passing for one with no rules", async (t) => {
+  ownerRules(t, NO_LOG);
+  const folder = join(process.env.XDG_CONFIG_HOME!, "coherence", "ast-grep");
+  chmodSync(folder, 0o000);
+  t.after(() => chmodSync(folder, 0o755));
+  await assert.rejects(report(APP), { message: /cannot read the ast-grep rules in .*ast-grep: EACCES/ });
 });

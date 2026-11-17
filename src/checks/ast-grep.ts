@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { BaseCheck, type Finding, type Tier } from "../lib/base-check.ts";
 import { ownerFile } from "../lib/owner-state.ts";
@@ -10,6 +10,10 @@ type Match = { file: string; ruleId: string; severity: string; message: string; 
 // ast-grep skips hidden folders and files its ignore files name. The copy it reads holds none of the repo's ignore files,
 // but a source file in a dot-folder is still the repo's code, and an ignore file above the cache folder is not the repo's to apply.
 const READ_EVERYTHING = ["hidden", "dot", "exclude", "global", "parent", "vcs"].flatMap((kind) => ["--no-ignore", kind]);
+// ast-grep obeys an `ast-grep-ignore` comment in the code it scans, and has no option to stop, so the repo could switch the owner's
+// rules off line by line. In the copy the word is written in capitals, which ast-grep does not obey (measured 2026-11-17); the
+// length is the same, so every line and column stays where it was.
+const SUPPRESSION = "ast-grep-ignore";
 
 /**
  * The owner's own mechanical rules, written for ast-grep. Each is `<name>.yml` in the owner's `ast-grep` config folder, beside two
@@ -29,6 +33,7 @@ export class AstGrepCheck extends BaseCheck {
       await writeFile(config, "ruleDirs: []\n");
       await mkdir(copy);
       await repo.copySourceFiles(copy);
+      for (const path of await repo.sourceFiles()) await disarmSuppressions(join(copy, path));
       const found: Match[] = [];
       for (const rule of rules) {
         const failure = await examplesFail(rule, config);
@@ -50,7 +55,13 @@ type Rule = { file: string; match?: string; clean?: string };
 /** The owner's rule files with their examples, read from the owner's config folder, never the repo (docs/adr/0002). */
 async function ownerRules(): Promise<Rule[]> {
   const folder = ownerFile("ast-grep");
-  const names = (await readdir(folder).catch(() => [])).sort();
+  // Only a missing folder means no rules; one that cannot be read must not pass for an owner who wrote none.
+  const names = (
+    await readdir(folder).catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw new Error(`coherence: cannot read the ast-grep rules in ${folder}: ${error.message}`);
+    })
+  ).sort();
   return names
     .filter((name) => name.endsWith(".yml"))
     .map((name) => {
@@ -61,24 +72,40 @@ async function ownerRules(): Promise<Rule[]> {
     });
 }
 
-/** Why `rule` may not run, or undefined when it reports its match example and leaves its clean one alone. */
+/** ast-grep refused to scan, such as for a rule it cannot read, as opposed to failing to start or finish. */
+class ScanRefused extends Error {}
+
+/** Writes the suppression comments in a copied file so that ast-grep does not obey them. A file the copy left out is skipped. */
+async function disarmSuppressions(file: string): Promise<void> {
+  const text = await readFile(file, "utf8").catch(() => undefined);
+  if (text?.includes(SUPPRESSION)) await writeFile(file, text.replaceAll(SUPPRESSION, SUPPRESSION.toUpperCase()));
+}
+
+/**
+ * Why `rule` may not run, or undefined when it reports its match example and leaves its clean one alone.
+ * Only ast-grep's refusal counts against the rule: a program that cannot start or finish fails the whole check, as for any tool.
+ */
 async function examplesFail(rule: Rule, config: string): Promise<string | undefined> {
   if (!rule.match || !rule.clean) return "it needs a .match. and a .clean. example beside it";
   try {
     if ((await scan(rule.file, config, [rule.match])).length === 0) return "it does not report its match example";
     if ((await scan(rule.file, config, [rule.clean])).length > 0) return "it reports its clean example";
   } catch (error) {
-    return (error as Error).message;
+    if (error instanceof ScanRefused) return error.message;
+    throw error;
   }
   return undefined;
 }
 
-/** What one rule reports in `paths`. ast-grep exits 1 when it reports an error-level match, so only an answer that is not JSON means it failed. */
+/** What one rule reports in `paths`. ast-grep exits 0, or 1 when it reports an error-level match; anything else is a refusal. */
 async function scan(rule: string, config: string, paths: string[]): Promise<Match[]> {
   const result = await runPinnedProgram("ast-grep", ["scan", "--config", config, "--rule", rule, "--json=compact", ...READ_EVERYTHING, ...paths]);
+  let matches: unknown;
   try {
-    return JSON.parse(result.stdout);
+    matches = [0, 1].includes(result.code) ? JSON.parse(result.stdout) : undefined;
   } catch {
-    throw new Error(`ast-grep failed: ${result.stderr.trim().split("\n")[0] || result.stdout.trim()}`);
+    // Not JSON, so a refusal like any other below.
   }
+  if (!Array.isArray(matches)) throw new ScanRefused(`ast-grep failed: ${result.stderr.trim().split("\n")[0] || result.stdout.trim()}`);
+  return matches;
 }
