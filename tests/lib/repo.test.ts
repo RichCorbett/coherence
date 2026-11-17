@@ -62,6 +62,12 @@ test("disarming rewrites the tools' suppression comments, not import paths or st
     " * fallow-ignore-file",
     " */",
     'import { alias } from "#ast-grep-ignore-utils";',
+    "/** ast-grep-ignore */",
+    "//\u00a0fallow-ignore-next-line",
+    "// - ast-grep-ignore",
+    "/*",
+    "\u2003fallow-ignore-file */",
+    "// x ast-grep-ignore",
   ];
   writeFileSync(file, `${lines.join("\n")}\n`);
   await disarm(file);
@@ -78,10 +84,16 @@ test("disarming rewrites the tools' suppression comments, not import paths or st
     " * FALLOW-IGNORE-file",
     " */",
     'import { alias } from "#ast-grep-ignore-utils";',
+    "/** AST-GREP-IGNORE */",
+    "//\u00a0FALLOW-IGNORE-next-line",
+    "// - AST-GREP-IGNORE",
+    "/*",
+    "\u2003FALLOW-IGNORE-file */",
+    "// x ast-grep-ignore",
   ]);
   // # opens a comment only in Python and Ruby, and there // does not.
   const python = join(tempFolder(), "a.py");
-  writeFileSync(python, "# ast-grep-ignore\nx = 7 // 2  # ast-grep-ignore: no-floor\ny = '// fallow-ignore-file'\n");
+  writeFileSync(python, "#\u00a0ast-grep-ignore\nx = 7 // 2  # ast-grep-ignore: no-floor\ny = '// fallow-ignore-file'\n");
   await disarm(python);
-  assert.equal(readFileSync(python, "utf8"), "# AST-GREP-IGNORE\nx = 7 // 2  # AST-GREP-IGNORE: no-floor\ny = '// fallow-ignore-file'\n");
+  assert.equal(readFileSync(python, "utf8"), "#\u00a0AST-GREP-IGNORE\nx = 7 // 2  # AST-GREP-IGNORE: no-floor\ny = '// fallow-ignore-file'\n");
 });
