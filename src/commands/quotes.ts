@@ -10,7 +10,7 @@ function plain(text: string): string {
   return text.replace(/\*\*|__|`/g, "").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
 }
 
-/** Each list item with its indented continuation lines, and each other line, as one entry: a quote must come from one of them. */
+/** Each list item with its indented continuation lines, and each other line but headings, as one entry: a quote must come from one of them. */
 function entries(text: string): string[] {
   const found: string[] = [];
   for (const line of text.split("\n")) {
@@ -18,7 +18,7 @@ function entries(text: string): string[] {
     if (continues) found[found.length - 1] += ` ${line}`;
     else found.push(line);
   }
-  return found.map(plain).filter((entry) => entry !== "");
+  return found.filter((line) => !line.startsWith("#")).map(plain).filter((entry) => entry !== "");
 }
 
 /** Whether `quote` is in `entry` as whole words, so "ever write" does not pass for "never write". */

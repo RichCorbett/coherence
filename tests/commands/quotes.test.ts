@@ -6,7 +6,7 @@ import { isolatedPlugin, tempFolder } from "../helpers/sandbox.ts";
 import { fakeInvocation } from "../helpers/temp-repo.ts";
 
 const PLUGIN = {
-  "rules/design.md": "# Rules\n\n- **One voice.** Reuse what exists;\n  never write a second one beside it.\n- **Dependencies go one way** between modules.\n",
+  "rules/design.md": "# How code must be designed\n\n- **One voice.** Reuse what exists;\n  never write a second one beside it.\n- **Dependencies go one way** between modules.\n",
   "taste/style.md": "# Style\n\n- Prefer plain words over clever ones.\n- Don't split a file that reads well whole.\n",
 };
 
@@ -33,10 +33,10 @@ test("a quote with the curly apostrophe the skill writes for a straight one is f
   assert.equal(exit, Exit.ok);
 });
 
-test("a quote that runs across two rules, or starts inside a word, is not found", async (t) => {
-  const { exit, printed } = await quotes(t, ["beside it. - Dependencies go one way", "ever write a second one beside it", "clever ones. - Don't split"]);
+test("a quote that runs across two rules, starts inside a word or is a heading is not found", async (t) => {
+  const { exit, printed } = await quotes(t, ["beside it. - Dependencies go one way", "ever write a second one beside it", "clever ones. - Don't split", "How code must be designed"]);
   assert.equal(exit, Exit.findings);
-  assert.deepEqual(printed.map((line) => line.split(":")[0]), ["not found", "not found", "not found"]);
+  assert.deepEqual(printed.map((line) => line.split(":")[0]), ["not found", "not found", "not found", "not found"]);
 });
 
 test("needs at least one quote", async (t) => {
