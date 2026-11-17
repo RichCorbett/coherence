@@ -20,3 +20,13 @@ _Avoid_: warning, advisory, info
 
 **Clean**:
 A branch with no must-fix findings, whatever notes it has.
+
+### Ownership
+
+**Owner**:
+The person whose taste and rules coherence enforces; the only one who may change owner state.
+_Avoid_: user, maintainer
+
+**Owner state**:
+What only the owner may change: the baseline, the rules and the trusted repos. It lives where the agent under review cannot write.
+_Avoid_: config, settings
