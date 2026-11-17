@@ -99,7 +99,9 @@ test("a tool planted in the reviewed repo's node_modules is never run", async ()
   assert.match(invocation.printed.join("\n"), /import cycle/);
 });
 
-test("a --base that looks like a git option is read as a ref, so it cannot write a file", async () => {
+test("a --base that looks like a git option is read as a ref, so it cannot write a file", async (t) => {
+  // The ref fails inside a check that reads the base, and a failing check stops coherence's programs, so start them again after.
+  t.after(resumeRunning);
   const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
   await assert.rejects(new CheckCommand().execute(fakeInvocation(repo.root, ["--base=--output=WRITTEN"])));
   assert.equal(existsSync(join(repo.root, "WRITTEN...HEAD")), false);

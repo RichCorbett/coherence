@@ -19,7 +19,8 @@ export abstract class BaseCheck {
   /** Each check sits in one tier, chosen when it is built: one that is sometimes right to fire and sometimes not is a note. */
   readonly tier: Tier = "must-fix";
 
-  abstract run(repo: Repo): Promise<Finding[]>;
+  /** `base` is the ref a branch is checked against, when there is one; most checks read only the code as it is now. */
+  abstract run(repo: Repo, base?: string): Promise<Finding[]>;
 
   protected finding(path: string, message: string, { line, scope = "file", key }: { line?: number; scope?: Scope; key?: string } = {}): Finding {
     return { check: this.name, tier: this.tier, path, line, scope, message, key };

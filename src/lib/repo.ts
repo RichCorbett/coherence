@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { MAX_OUTPUT_MB, type ProcessResult, runProcess } from "./process.ts";
 
@@ -60,9 +61,28 @@ export class Repo {
 
   /** The source files at the commit where the branch left `base`. */
   async sourceFilesAtBranchPoint(base: string): Promise<string[]> {
+    return handWritten(await this.gitPaths(["ls-tree", "-r", "-z", "--name-only", "--end-of-options", await this.branchPoint(base)]));
+  }
+
+  /**
+   * Writes the files of the commit where the branch left `base` into `folder`, with no .git, and returns the folder they are in.
+   * An export rather than a checkout: the working tree is untouched, and nothing in it is a repository whose config git would obey.
+   */
+  async exportBranchPoint(base: string, folder: string): Promise<string> {
+    const tar = join(folder, "branch-point.tar");
+    const tree = join(folder, "tree");
+    const archived = await git(["archive", "--format=tar", "-o", tar, "--end-of-options", await this.branchPoint(base)], this.root);
+    if (archived.code !== 0) throw new Error(`git archive failed: ${firstLine(archived.stderr)}`);
+    await mkdir(tree);
+    const unpacked = await runProcess("tar", ["-xf", tar, "-C", tree], folder);
+    if (unpacked.code !== 0) throw new Error(`tar failed: ${firstLine(unpacked.stderr)}`);
+    return tree;
+  }
+
+  private async branchPoint(base: string): Promise<string> {
     const point = await git(["merge-base", "--end-of-options", base, "HEAD"], this.root);
     if (point.code !== 0) throw new Error(`no common commit with ${base}: ${firstLine(point.stderr)}`);
-    return handWritten(await this.gitPaths(["ls-tree", "-r", "-z", "--name-only", "--end-of-options", point.stdout.trim()]));
+    return point.stdout.trim();
   }
 
   /** Files changed since the branch left `base`; deleted files have nothing left to check. */
