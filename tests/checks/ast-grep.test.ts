@@ -146,7 +146,7 @@ test("a rules folder that cannot be read fails the check instead of passing for 
   await assert.rejects(report(APP), { message: /cannot read the ast-grep rules in .*ast-grep: EACCES/ });
 });
 
-test("a rule that holds two rules, or reads text the disarming changes, is skipped rather than half-tested", async (t) => {
+test("a rule file that holds two rules is skipped rather than half-tested, and a string holding a suppression word is read as written", async (t) => {
   const written = ownerRules(t, {
     ...NO_ANY,
     "two.yml": `${NO_LOG["no-log.yml"].replace("no-log", "two-a")}--- # a second rule\n${NO_LOG["no-log.yml"].replace("no-log", "two-b").replace("pattern: console.log", "pattern: console.nothing")}`,
@@ -156,10 +156,12 @@ test("a rule that holds two rules, or reads text the disarming changes, is skipp
     "literal.match.ts": 'off("ast-grep-ignore");\n',
     "literal.clean.ts": 'off("other");\n',
   });
-  assert.deepEqual(await report({ ...APP, "src/b.ts": 'off("ast-grep-ignore");\n' }), ["src/app.ts:1 note say what the type is (ast-grep rule no-any)"]);
+  assert.deepEqual(await report({ ...APP, "src/b.ts": 'off("ast-grep-ignore");\n' }), [
+    "src/app.ts:1 note say what the type is (ast-grep rule no-any)",
+    "src/b.ts:1 must-fix m (ast-grep rule literal)",
+  ]);
   assert.match(written.join(""), /two\.yml: it holds more than one rule/);
   // Saved with Windows line endings too: a multiline $ in JavaScript matches before \r as well as \n (measured 2026-11-17).
   ownerRules(t, { ...NO_LOG, "no-log.yml": `${NO_LOG["no-log.yml"]}---\n${NO_LOG["no-log.yml"].replace("no-log", "never").replace("pattern: console.log", "pattern: console.nothing")}`.replaceAll("\n", "\r\n") });
   assert.deepEqual(await report(APP), []);
-  assert.match(written.join(""), /literal\.yml: it does not report its match example/);
 });

@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, realpath } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { MAX_OUTPUT_MB, type ProcessResult, runProcess } from "./process.ts";
 
@@ -12,6 +12,31 @@ export const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)
 
 // A folder in the repo under review can pose as a repository of its own, and its config can name a command for git to run.
 const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"];
+
+// The tools that read the copy obey comments in the code that switch their findings off, and have no option to stop.
+// In the copy those words are written in capitals, which neither obeys (measured 2026-11-17), so the code under review cannot
+// silence the owner's checks; the length is the same, so every line and column stays where it was.
+// Only where the word opens a comment in the file's language: //, /* or a block comment's leading *, or # in Python and Ruby, which
+// only ast-grep reads. Opening means nothing but non-letters stand between: ast-grep skips any of them (spaces of every kind, *, -,
+// digits, a newline in a block comment) and fallow skips Unicode spaces and *, but neither obeys the word after a letter (measured
+// 2026-11-17). So a URL, an import path or a note that mentions it later stays as written, and so does a "#..." subpath import in
+// JavaScript, where # opens no comment. A string holding an opener before the word, like "// ast-grep-ignore", is still rewritten:
+// telling it from a comment takes a lexer for every language, and the cost is a rule missing that one literal, never a check
+// switched off.
+// The word comes first and the opener is looked for behind it: looking forward from every opener took time growing with the square
+// of a line of slashes, 3.3s for 80 000 of them (measured 2026-11-17), and the copy is made inside every check that reads it.
+const SLASH_SUPPRESSION =
+  /(?:ast-grep-ignore|fallow-ignore)(?<=(?:\/\/[^\p{Alphabetic}\n]*|\/\*[^\p{Alphabetic}]*|^[^\S\n]*\*[^\p{Alphabetic}\n]*)(?:ast-grep-ignore|fallow-ignore))/gmu;
+const HASH_SUPPRESSION = /ast-grep-ignore(?<=#[^\p{Alphabetic}\n]*ast-grep-ignore)/gu;
+const HASH_COMMENTS = /\.(py|rb)$/;
+
+/** Rewrites the tools' suppression comments in `file`, a copy, so that no tool obeys them. */
+export async function disarmSuppressions(file: string): Promise<void> {
+  const text = await readFile(file, "utf8");
+  const suppression = HASH_COMMENTS.test(file) ? HASH_SUPPRESSION : SLASH_SUPPRESSION;
+  const disarmed = text.replace(suppression, (word) => word.toUpperCase());
+  if (disarmed !== text) await writeFile(file, disarmed);
+}
 
 function handWritten(paths: string[]): string[] {
   return paths.filter((path) => SOURCE_FILE.test(path) && !NOT_HAND_WRITTEN.test(path));
@@ -86,15 +111,18 @@ export class Repo {
    * Copies the source files, and the package.json and tsconfig files that say how they import each other, into `folder`.
    * A copy rather than the working tree, for a tool that must never see the repo itself: it holds no .git whose config git would obey,
    * no config file of any tool, and only regular files whose real path is where git lists them, so no symlink leads out of the repo.
+   * The source files' suppression comments are disarmed, so no tool's finding can be switched off from the code.
    */
   async copySourceFiles(folder: string): Promise<void> {
     const listed = await this.listedFiles();
     const realRoot = await realpath(this.root);
-    for (const path of [...handWritten(listed), ...listed.filter((path) => PROJECT_FILE.test(path))]) {
+    const source = new Set(handWritten(listed));
+    for (const path of [...source, ...listed.filter((path) => PROJECT_FILE.test(path))]) {
       const from = join(realRoot, path);
       if (!(await lstat(from).catch(() => undefined))?.isFile() || (await realpath(from)) !== from) continue;
       await mkdir(dirname(join(folder, path)), { recursive: true });
       await copyFile(from, join(folder, path));
+      if (source.has(path)) await disarmSuppressions(join(folder, path));
     }
   }
 

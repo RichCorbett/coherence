@@ -25,7 +25,7 @@ There are two kinds of thing, and each has a folder, one file each, and one shap
 - `src/commands/*.ts` extends `BaseCommand`: one thing the `coherence` CLI can do.
 - `src/checks/*.ts` extends `BaseCheck`: one deterministic rule.
 
-Everything else is machinery in `src/lib/`. Checks read code through `Repo`, and five (`cycles`, `first-import`, `duplicates`, `dead-code`, `ast-grep`) also
+Everything else is machinery in `src/lib/`. Checks read code through `Repo`, and six (`cycles`, `first-import`, `duplicates`, `dead-code`, `reinvented`, `ast-grep`) also
 delegate to external tools, madge, jscpd, fallow and ast-grep, installed once from the plugin's own lockfile (`tools/`) with `npm ci --ignore-scripts` and run from an empty folder, so the repo under review cannot replace or configure them. fallow and ast-grep also read only a copy of the source files (`Repo.copySourceFiles`), never the repo itself, and run as native programs, not through their Node launchers. A `Finding`'s path is always relative to the
 repo root, and its scope (file or folder) says when a branch is answerable for it. Every command returns one of
 the named `Exit` codes; an error that escapes a command is printed as one line by `main.ts` and exits `Exit.failed`.
