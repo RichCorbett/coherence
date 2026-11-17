@@ -54,14 +54,17 @@ export class CheckCommand extends BaseCommand {
     } catch (error) {
       invocation.print(`coherence check: could not count skipped files: ${(error as Error).message}`);
     }
-    invocation.print(findings.length === 0 ? "coherence check: clean" : `coherence check: ${findings.length} finding(s)`);
-    return findings.length === 0 ? Exit.ok : Exit.findings;
+    const mustFix = findings.filter((finding) => finding.tier === "must-fix").length;
+    const notes = findings.length - mustFix;
+    const noted = notes > 0 ? ` (${notes} note(s))` : "";
+    invocation.print(mustFix === 0 ? `coherence check: clean${noted}` : `coherence check: ${mustFix} finding(s) to fix${noted}`);
+    return mustFix === 0 ? Exit.ok : Exit.findings;
   }
 }
 
 function describe(finding: Finding): string {
   const place = finding.line ? `${finding.path}:${finding.line}` : finding.path;
-  return `${place} [${finding.check}] ${finding.message}`;
+  return `${place} [${finding.check}] ${finding.tier === "note" ? "note: " : ""}${finding.message}`;
 }
 
 function filesIn(paths: string[], folder: string): number {
