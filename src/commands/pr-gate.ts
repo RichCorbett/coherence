@@ -32,6 +32,17 @@ const UNREADABLE_HOOK =
   "coherence pr-gate could not read the hook input, so it cannot tell whether this command opens a PR. " +
   "Claude Code's hook format may have changed: update or disable the coherence plugin.";
 
+/**
+ * What decides whether a branch passes, by a lowercase text every line that writes it must name, and who may write it (#66).
+ * The installed plugin is not here: the review skill runs it by its absolute path under plugins/cache/coherence, so a text rule
+ * cannot tell running it from editing it.
+ */
+const GUARDED = [
+  { marker: REVIEW_KEY_NAME, what: `the review record (${REVIEW_KEY_NAME})`, who: "is written only by `pr-gate pass`" },
+  { marker: "--save-baseline", what: "saving the baseline", who: "the owner runs in their own terminal" },
+  { marker: "coherence/baselines", what: "the owner's baseline folder", who: "only `coherence check --save-baseline` in the owner's own terminal writes" },
+];
+
 /** Refuses to open a pull request unless the commit it would publish has had a coherence review, and records when one has. */
 export class PrGateCommand extends BaseCommand {
   readonly name = "pr-gate";
@@ -81,10 +92,12 @@ export class PrGateCommand extends BaseCommand {
       this.deny(invocation, UNREADABLE_HOOK);
       return Exit.ok;
     }
-    // Text rule, like the gh mention below: a line naming the record's keys is a write to it, and only `pr-gate pass` may write it.
-    // The pass line itself never names them. A key built from pieces or written with the Edit tool still gets past this.
-    if (hook.command.toLowerCase().includes(REVIEW_KEY_NAME)) {
-      this.deny(invocation, `Refused by coherence: this command names the review record (${REVIEW_KEY_NAME}), which is written only by \`pr-gate pass\`. Skipping review is the owner's decision, not yours.`);
+    // Text rules, like the gh mention below: a line naming what decides whether the agent passes is a write to it, and only the owner may write it.
+    // The review skill's pass line names none of them. A name built from pieces, or a write with the Edit or Write tool, still gets past.
+    const line = hook.command.toLowerCase();
+    const guarded = GUARDED.find(({ marker }) => line.includes(marker));
+    if (guarded) {
+      this.deny(invocation, `Refused by coherence: this command names ${guarded.what}, which ${guarded.who}. Skipping review is the owner's decision, not yours.`);
       return Exit.ok;
     }
     if (!opensPr(hook.command, shellCommands(hook.command))) return Exit.ok;
