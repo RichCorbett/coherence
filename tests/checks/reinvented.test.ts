@@ -75,3 +75,11 @@ test("through check, a reinvented helper is a note and the branch stays clean", 
   assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
   assert.ok(invocation.printed.some((line) => line.startsWith("src/lib/format.ts:1 [reinvented] note: lines 1-13 do what")));
 });
+
+test("each finding names at most three of the others, so a large group stays one line per piece", async () => {
+  const copies = Object.fromEntries(["a", "b", "c"].map((name) => [`src/commands/${name}.ts`, REPORT.replaceAll("shortDate", `${name}Date`).replaceAll("orderSum", `${name}Sum`)]));
+  const findings = await report({ ...APP, ...copies });
+  // The five copies form one group; fallow also groups the four command files on their own.
+  for (const finding of findings) assert.ok((finding.split(" do what ")[1].match(/\.ts:/g) ?? []).length <= 3, finding);
+  assert.equal(findings.filter((finding) => finding.includes(" and 1 more already does")).length, 5, findings.join("\n"));
+});

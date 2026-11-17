@@ -16,12 +16,19 @@ const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c",
 // The tools that read the copy obey comments in the code that switch their findings off, and have no option to stop.
 // In the copy those words are written in capitals, which neither obeys (measured 2026-11-17), so the code under review cannot
 // silence the owner's checks; the length is the same, so every line and column stays where it was.
-const SUPPRESSIONS = ["ast-grep-ignore", "fallow-ignore"];
+// Only after a comment opener on the same line (//, /*, #, or a block comment's leading *), so an import path or a string that holds
+// the word stays as written.
+const SUPPRESSION = /((?:\/\/|\/\*|#|^[ \t]*\*)[^\n]*?)(ast-grep-ignore|fallow-ignore)/gm;
 
 /** Rewrites the tools' suppression comments in `file`, a copy, so that no tool obeys them. */
 export async function disarmSuppressions(file: string): Promise<void> {
   const text = await readFile(file, "utf8");
-  const disarmed = SUPPRESSIONS.reduce((result, word) => result.replaceAll(word, word.toUpperCase()), text);
+  let disarmed = text;
+  // Again until nothing changes, for a line holding the word twice.
+  for (let before = ""; before !== disarmed; ) {
+    before = disarmed;
+    disarmed = disarmed.replace(SUPPRESSION, (_, lead: string, word: string) => lead + word.toUpperCase());
+  }
   if (disarmed !== text) await writeFile(file, disarmed);
 }
 
