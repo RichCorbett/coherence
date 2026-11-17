@@ -5,6 +5,7 @@ import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { saveBaseline, withoutBaseline } from "../lib/baseline.ts";
 import { stopRunning } from "../lib/process.ts";
 import { Repo } from "../lib/repo.ts";
+import { AstGrepCheck } from "../checks/ast-grep.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
 import { DeadCodeCheck } from "../checks/dead-code.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
@@ -17,6 +18,7 @@ const CHECKS: BaseCheck[] = [
   new FlatFolderCheck(),
   new FirstImportCheck(),
   new DeadCodeCheck(),
+  new AstGrepCheck(),
 ];
 
 /** Runs every deterministic rule, so reviewers can spend their attention on judgment. */
