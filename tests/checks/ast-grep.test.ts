@@ -145,3 +145,18 @@ test("a rules folder that cannot be read fails the check instead of passing for 
   t.after(() => chmodSync(folder, 0o755));
   await assert.rejects(report(APP), { message: /cannot read the ast-grep rules in .*ast-grep: EACCES/ });
 });
+
+test("a rule that holds two rules, or reads text the disarming changes, is skipped rather than half-tested", async (t) => {
+  const written = ownerRules(t, {
+    ...NO_ANY,
+    "two.yml": `${NO_LOG["no-log.yml"].replace("no-log", "two-a")}---\n${NO_LOG["no-log.yml"].replace("no-log", "two-b").replace("pattern: console.log", "pattern: console.nothing")}`,
+    "two.match.ts": "console.log(1);\n",
+    "two.clean.ts": "console.error(1);\n",
+    "literal.yml": "id: literal\nlanguage: TypeScript\nseverity: error\nmessage: m\nrule: { pattern: 'off(\"ast-grep-ignore\")' }\n",
+    "literal.match.ts": 'off("ast-grep-ignore");\n',
+    "literal.clean.ts": 'off("other");\n',
+  });
+  assert.deepEqual(await report({ ...APP, "src/b.ts": 'off("ast-grep-ignore");\n' }), ["src/app.ts:1 note say what the type is (ast-grep rule no-any)"]);
+  assert.match(written.join(""), /two\.yml: it holds more than one rule/);
+  assert.match(written.join(""), /literal\.yml: it does not report its match example/);
+});

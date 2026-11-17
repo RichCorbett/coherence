@@ -1,5 +1,5 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { basename, join, relative } from "node:path";
 import { BaseCheck, type Finding, type Tier } from "../lib/base-check.ts";
 import { ownerFile } from "../lib/owner-state.ts";
 import { runPinnedProgram, withTempFolder } from "../lib/process.ts";
@@ -28,15 +28,16 @@ export class AstGrepCheck extends BaseCheck {
     const rules = await ownerRules();
     if (rules.length === 0 || (await repo.sourceFiles()).length === 0) return [];
     const matches = await withTempFolder(async (folder) => {
-      const [copy, config] = [join(folder, "copy"), join(folder, "sgconfig.yml")];
+      const [copy, examples, config] = [join(folder, "copy"), join(folder, "examples"), join(folder, "sgconfig.yml")];
       // Our own config, so ast-grep never looks for one: a repo's sgconfig.yml can load rules from anywhere (measured 2026-11-17).
       await writeFile(config, "ruleDirs: []\n");
       await mkdir(copy);
+      await mkdir(examples);
       await repo.copySourceFiles(copy);
       for (const path of await repo.sourceFiles()) await disarmSuppressions(join(copy, path));
       const found: Match[] = [];
       for (const rule of rules) {
-        const failure = await examplesFail(rule, config);
+        const failure = await examplesFail(rule, config, examples);
         if (failure) process.stderr.write(`coherence check: skipped the ast-grep rule ${rule.file}: ${failure}\n`);
         else found.push(...(await scan(rule.file, config, [copy])).map((match) => ({ ...match, file: relative(copy, match.file) })));
       }
@@ -83,13 +84,23 @@ async function disarmSuppressions(file: string): Promise<void> {
 
 /**
  * Why `rule` may not run, or undefined when it reports its match example and leaves its clean one alone.
+ * The examples are copied into `folder` and disarmed like the repo's code, so a rule is tested on code as it will see it.
  * Only ast-grep's refusal counts against the rule: a program that cannot start or finish fails the whole check, as for any tool.
  */
-async function examplesFail(rule: Rule, config: string): Promise<string | undefined> {
+async function examplesFail(rule: Rule, config: string, folder: string): Promise<string | undefined> {
   if (!rule.match || !rule.clean) return "it needs a .match. and a .clean. example beside it";
+  // ast-grep reads several rules from one file, and they would share one verdict, so one that never matches could hide.
+  if ((await readFile(rule.file, "utf8")).split(/^---\s*$/m).filter((part) => part.trim() !== "").length > 1) {
+    return "it holds more than one rule; give each its own file and examples";
+  }
+  const [match, clean] = [join(folder, basename(rule.match)), join(folder, basename(rule.clean))];
+  for (const [from, to] of [[rule.match, match], [rule.clean, clean]]) {
+    await copyFile(from, to);
+    await disarmSuppressions(to);
+  }
   try {
-    if ((await scan(rule.file, config, [rule.match])).length === 0) return "it does not report its match example";
-    if ((await scan(rule.file, config, [rule.clean])).length > 0) return "it reports its clean example";
+    if ((await scan(rule.file, config, [match])).length === 0) return "it does not report its match example";
+    if ((await scan(rule.file, config, [clean])).length > 0) return "it reports its clean example";
   } catch (error) {
     if (error instanceof ScanRefused) return error.message;
     throw error;
