@@ -25,7 +25,7 @@ test("a program still running at its time limit is stopped and the call fails, n
 test("an install that starts while another is under way gets a complete install, and only one is kept", async (t) => {
   const cache = tempFolder();
   setEnv(t, { XDG_CACHE_HOME: cache });
-  const scripts = ["madge/bin/cli.js", "jscpd/run-jscpd.js"];
+  const scripts = ["madge/bin/cli.js", "jscpd/run-jscpd.js", "fallow/bin/fallow"];
   // Checked the moment each install returns, because a folder still being written is complete by the time both have.
   const complete = (tools: string) => ({ tools, complete: scripts.every((script) => existsSync(join(tools, "node_modules", script))) });
 
@@ -82,7 +82,7 @@ test("a tools folder that lacks an entry script, or is a symlink, is refused and
 test("an install whose npm fails uses the install another run finished meanwhile", async (t) => {
   setEnv(t, { XDG_CACHE_HOME: tempFolder() });
   // Plays the other run: puts a finished install where this run's staging folder would be renamed to, then fails.
-  stubNpm(t, `final="\${PWD%-installing-*}"\nmkdir -p "$final/node_modules/madge/bin" "$final/node_modules/jscpd"\ntouch "$final/node_modules/madge/bin/cli.js" "$final/node_modules/jscpd/run-jscpd.js"\nexit 1\n`);
+  stubNpm(t, `final="\${PWD%-installing-*}"\nmkdir -p "$final/node_modules/madge/bin" "$final/node_modules/jscpd" "$final/node_modules/fallow/bin"\ntouch "$final/node_modules/madge/bin/cli.js" "$final/node_modules/jscpd/run-jscpd.js" "$final/node_modules/fallow/bin/fallow"\nexit 1\n`);
 
   const tools = await installTools();
 
