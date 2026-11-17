@@ -53,8 +53,15 @@ test("a folder that does not exist yet still briefs its siblings", async (t) => 
 test("past the cap it says how many it left out instead of printing them", async (t) => {
   const many = Object.fromEntries(Array.from({ length: 40 }, (_, at) => [`src/lib/f${String(at).padStart(2, "0")}.ts`, Array.from({ length: 5 }, (_, n) => `export const v${at}_${n} = 1;\n`).join("")]));
   const { out } = await brief(t, ["src/lib"], many);
-  assert.match(out, /\.\.\. 10 more file\(s\) not listed; name a narrower folder to see them/);
+  assert.match(out, /\.\.\. more not listed: the list stops at 150 names/);
   assert.doesNotMatch(out, /v30_0/);
+});
+
+test("one file with more names than the cap still lists the cap's worth", async (t) => {
+  const big = { "src/lib/a-big.ts": Array.from({ length: 200 }, (_, n) => `export const big${n} = 1;\n`).join(""), "src/lib/z.ts": "export const z = 1;\n" };
+  const { out } = await brief(t, ["src/lib"], big);
+  assert.match(out, /src\/lib\/a-big\.ts: big0, big1, .*big149, \.\.\.$/m);
+  assert.match(out, /more not listed/);
 });
 
 test("refuses a path outside the repo, and needs at least one path", async (t) => {

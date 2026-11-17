@@ -6,7 +6,7 @@ import { readPluginFile } from "../lib/plugin-files.ts";
 import { Repo } from "../lib/repo.ts";
 import { readTaste } from "../lib/taste.ts";
 
-// Past this the list costs more prompt than it saves; the agent is told to name a narrower folder.
+// Past this the list costs more prompt than it saves.
 const MAX_NAMES = 150;
 
 // A declaration that starts a line; `export { a, b }` lists and re-exports are left out. Raw text, not a parse: a line inside a block comment
@@ -55,12 +55,13 @@ export class BriefCommand extends BaseCommand {
       }
       const names = [...text.matchAll(EXPORTED)].map((match) => match[1]);
       if (names.length === 0) continue;
-      if (shown + names.length > MAX_NAMES) {
-        lines.push(`... ${sorted.length - at} more file(s) not listed; name a narrower folder to see them`);
+      const room = MAX_NAMES - shown;
+      shown += Math.min(room, names.length);
+      lines.push(`${path}: ${names.slice(0, room).join(", ")}${names.length > room ? ", ..." : ""}`);
+      if (shown === MAX_NAMES) {
+        if (names.length > room || at < sorted.length - 1) lines.push(`... more not listed: the list stops at ${MAX_NAMES} names`);
         break;
       }
-      shown += names.length;
-      lines.push(`${path}: ${names.join(", ")}`);
     }
     if (unread > 0) lines.push(`(${unread} file(s) could not be read)`);
 
