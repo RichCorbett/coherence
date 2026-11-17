@@ -1,4 +1,5 @@
-import { dirname } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
 import { madge, SCRIPT_FILE } from "../lib/madge.ts";
 import { withTempFolder } from "../lib/process.ts";
@@ -18,12 +19,17 @@ export class FirstImportCheck extends BaseCheck {
   async run(repo: Repo, base?: string): Promise<Finding[]> {
     if (!base) return [];
     const files = (await repo.sourceFiles()).filter((path) => SCRIPT_FILE.test(path));
-    const before = (await repo.sourceFilesAtBranchPoint(base)).filter((path) => SCRIPT_FILE.test(path));
-    if (files.length === 0 || before.length === 0) return [];
+    const listed = (await repo.sourceFilesAtBranchPoint(base)).filter((path) => SCRIPT_FILE.test(path));
+    if (files.length === 0 || listed.length === 0) return [];
 
-    const now = (await madge(repo.root, files, [])) as Graph;
     // The base is read from an export of the branch point, never a checkout, so nothing in the working tree changes (docs/adr/0003).
-    const then = await withTempFolder(async (folder) => (madge(await repo.exportBranchPoint(base, folder), before, [])) as Promise<Graph>);
+    // git archive leaves out what the repo marks export-ignore, so the base is only what the export holds, and a folder it left out counts as new.
+    const { before, then } = await withTempFolder(async (folder) => {
+      const tree = await repo.exportBranchPoint(base, folder);
+      const before = listed.filter((path) => existsSync(join(tree, path)));
+      return { before, then: before.length === 0 ? {} : ((await madge(tree, before, [])) as Graph) };
+    });
+    const now = (await madge(repo.root, files, [])) as Graph;
 
     const oldFolders = new Set(before.map(dirname));
     const known = new Set(edges(then, new Set(before)).map(([, , edge]) => edge));

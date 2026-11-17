@@ -54,3 +54,12 @@ test("through check --base, the first import is a note and the branch stays clea
   assert.ok(invocation.printed.some((line) => line.startsWith("src/lib/more.ts [first-import] note: first import from src/lib/")));
   assert.equal(invocation.printed.at(-1), "coherence check: clean (1 note(s))");
 });
+
+test("a folder the branch point marks export-ignore counts as new, and the check still runs", async () => {
+  const repo = await tempRepo({ ...LAYERED, ".gitattributes": "src/tools/ export-ignore\n", "src/tools/gen.ts": 'import { helper } from "../lib/helper.ts";\nexport const gen = helper;\n' });
+  git(repo.root, "checkout", "-q", "-b", "work");
+  writeFiles(repo.root, { "src/tools/gen.ts": 'import { other } from "../commands/other.ts";\nexport const gen = other;\n' });
+  git(repo.root, "add", "-A");
+  git(repo.root, "commit", "-q", "-m", "change");
+  assert.deepEqual(await new FirstImportCheck().run(repo, "main"), []);
+});
