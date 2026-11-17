@@ -40,3 +40,17 @@ _Avoid_: hook, check, PR guard
 **Guard**:
 The refusal of an agent's edit to the gate or to owner state.
 _Avoid_: lock, protection
+
+**Rule**:
+A written design principle the reviewer holds code to, taken from the design rules or the owner's taste.
+_Avoid_: guideline, principle, policy
+
+**Unsupported finding**:
+A reviewer finding whose quoted rule does not appear word for word in any rule.
+_Avoid_: hallucinated finding
+
+### Taste
+
+**Taste**:
+The owner's recorded design preferences: the shipped style, the condensed taste and the taste log.
+_Avoid_: preferences, style guide
