@@ -199,7 +199,9 @@ export class Repo {
 
   private async splitSourceFiles(): Promise<{ kept: string[]; skipped: string[] }> {
     // Untracked files count too: the checks run when code is written, usually before `git add`. Ignored files stay out.
-    const source = (await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).filter((path) => SOURCE_FILE.test(path));
+    // A file deleted from the working tree stays in the index until the deletion is staged, and there is nothing left to check (#71).
+    const deleted = new Set(await this.gitPaths(["ls-files", "-z", "--deleted"]));
+    const source = (await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).filter((path) => SOURCE_FILE.test(path) && !deleted.has(path));
     return { kept: source.filter((path) => !NOT_HAND_WRITTEN.test(path)), skipped: source.filter((path) => NOT_HAND_WRITTEN.test(path)) };
   }
 
