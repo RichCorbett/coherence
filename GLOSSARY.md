@@ -54,3 +54,7 @@ _Avoid_: hallucinated finding
 **Taste**:
 The owner's recorded design preferences: the shipped style, the condensed taste and the taste log.
 _Avoid_: preferences, style guide
+
+**Baseline**:
+The findings the owner accepted as they stood on one day, which later checks leave out.
+_Avoid_: allowlist, suppressions, ignore list

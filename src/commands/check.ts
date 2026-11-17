@@ -2,6 +2,7 @@ import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import type { BaseCheck, Finding } from "../lib/base-check.ts";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
+import { saveBaseline, withoutBaseline } from "../lib/baseline.ts";
 import { stopRunning } from "../lib/process.ts";
 import { Repo } from "../lib/repo.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
@@ -17,7 +18,7 @@ const CHECKS: BaseCheck[] = [
 /** Runs every deterministic rule, so reviewers can spend their attention on judgment. */
 export class CheckCommand extends BaseCommand {
   readonly name = "check";
-  readonly usage = "coherence check [--base <ref>]";
+  readonly usage = "coherence check [--base <ref>] | coherence check --save-baseline  (records every finding now, so later checks report only new ones)";
 
   private readonly checks: BaseCheck[];
 
@@ -27,8 +28,9 @@ export class CheckCommand extends BaseCommand {
   }
 
   async execute(invocation: Invocation): Promise<number> {
-    const { values } = parseArgs({ args: invocation.args, options: { base: { type: "string" } } });
+    const { values } = parseArgs({ args: invocation.args, options: { base: { type: "string" }, "save-baseline": { type: "boolean" } } });
     const base = values.base;
+    if (values["save-baseline"] && base) throw new Error("--save-baseline records the whole repo, so it takes no --base");
     const repo = await Repo.open(invocation.cwd);
 
     let findings: Finding[];
@@ -39,6 +41,13 @@ export class CheckCommand extends BaseCommand {
       stopRunning();
       throw error;
     }
+    if (values["save-baseline"]) {
+      for (const finding of findings) invocation.print(describe(finding));
+      invocation.print(`coherence check: saved ${findings.length} finding(s) as the baseline in ${await saveBaseline(repo, findings)}`);
+      return Exit.ok;
+    }
+    const { fresh, known } = await withoutBaseline(repo, findings);
+    findings = fresh;
     if (base) {
       const changed = await repo.changedFiles(base);
       const [before, after] = [await repo.sourceFilesAtBranchPoint(base), await repo.sourceFiles()];
@@ -54,6 +63,7 @@ export class CheckCommand extends BaseCommand {
     } catch (error) {
       invocation.print(`coherence check: could not count skipped files: ${(error as Error).message}`);
     }
+    if (known > 0) invocation.print(`coherence check: ${known} finding(s) left out because the baseline holds them`);
     const mustFix = findings.filter((finding) => finding.tier === "must-fix").length;
     const notes = findings.length - mustFix;
     const noted = notes > 0 ? ` (${notes} note(s))` : "";

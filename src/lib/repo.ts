@@ -152,6 +152,13 @@ export class Repo {
     });
   }
 
+  /** The repository's shared git folder, the same for every worktree of it, so a worktree of the repo reads the repo's owner state. */
+  async commonDir(): Promise<string> {
+    const result = await git(["rev-parse", "--path-format=absolute", "--git-common-dir"], this.root);
+    if (result.code !== 0) throw new Error(`git rev-parse failed: ${firstLine(result.stderr)}`);
+    return result.stdout.trim();
+  }
+
   /** True when the working tree is not exactly HEAD: a changed tracked file, staged or not, or an untracked file that is not ignored. */
   async hasUncommittedChanges(): Promise<boolean> {
     const result = await git(["status", "--porcelain", "--untracked-files=normal"], this.root);

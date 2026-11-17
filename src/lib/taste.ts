@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { appendFile, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { ownerFile } from "./owner-state.ts";
 import { readPluginFile } from "./plugin-files.ts";
 
 const RULES_HEADING = "## Rules condensed so far";
@@ -112,8 +112,7 @@ function archivePath(): string {
   return configFile("taste-archive.md");
 }
 
-// Outside the plugin because the owner's taste must survive a plugin update and never ship with the plugin.
+// The owner's taste must survive a plugin update and never ship with the plugin.
 function configFile(name: string): string {
-  const configHome = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-  return join(configHome, "coherence", name);
+  return ownerFile(name);
 }
