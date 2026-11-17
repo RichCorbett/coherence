@@ -3,6 +3,7 @@
   "private": true,
   "description": "The external tools coherence's checks run, installed once from package-lock.json with npm ci --ignore-scripts.",
   "dependencies": {
+    "@ast-grep/cli": "0.51.1",
     "fallow": "3.43.2",
     "jscpd": "5.4.3",
     "madge": "8.0.0"

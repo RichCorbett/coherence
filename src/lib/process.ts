@@ -49,17 +49,24 @@ export function runProcess(command: string, args: string[], cwd: string, timeout
   });
 }
 
-// The plugin's own tools/package.json and package-lock.json, which pin madge, jscpd, fallow and everything they depend on.
+// The plugin's own tools/package.json and package-lock.json, which pin madge, jscpd, fallow, ast-grep and everything they depend on.
 const TOOLS_MANIFEST = join(import.meta.dirname, "../../tools");
 const TOOL_SCRIPTS = ["madge/bin/cli.js", "jscpd/run-jscpd.js"];
-// fallow's bin/fallow is a Node launcher that runs this native program as its child, and a time limit or stopRunning kills only the
-// process it started, so the native program would run on. coherence runs it directly instead; the lockfile pins its hash.
-// On Linux the lockfile does not restrict the builds by libc, so npm can install both. The musl build comes first: it is statically
-// linked and runs on glibc too (fallow's own launcher says so), while the glibc build cannot start on musl.
-const FALLOW_PROGRAMS =
-  process.platform === "linux"
-    ? [`@fallow-cli/linux-${process.arch}-musl/fallow`, `@fallow-cli/linux-${process.arch}-gnu/fallow`]
-    : [`@fallow-cli/${process.platform}-${process.arch}/fallow`];
+// The native programs coherence runs itself, each as the paths where npm may put this machine's build; the lockfile pins their hashes.
+// fallow's bin/fallow is a Node launcher that runs its native program as its child, and a time limit or stopRunning kills only the
+// process it started, so the native program would run on. ast-grep's npm package is the same shape, and its install script, which
+// --ignore-scripts skips, only copies the program next to the launcher.
+// On Linux the lockfile does not restrict fallow's builds by libc, so npm can install both. The musl build comes first: it is
+// statically linked and runs on glibc too (fallow's own launcher says so), while the glibc build cannot start on musl.
+// ast-grep publishes glibc builds only.
+const NATIVE_PROGRAMS = {
+  fallow:
+    process.platform === "linux"
+      ? [`@fallow-cli/linux-${process.arch}-musl/fallow`, `@fallow-cli/linux-${process.arch}-gnu/fallow`]
+      : [`@fallow-cli/${process.platform}-${process.arch}/fallow`],
+  "ast-grep": [`@ast-grep/cli-${process.platform}-${process.arch}${process.platform === "linux" ? "-gnu" : ""}/ast-grep`],
+};
+type NativeProgram = keyof typeof NATIVE_PROGRAMS;
 // A cold install measured about 1s on a fast connection. Two minutes allows a slow one,
 // and stops a stalled registry connection well before npm's own 5-minute fetch timeout and its retries would.
 const NPM_CI_TIMEOUT_MS = 120_000;
@@ -79,10 +86,10 @@ export async function runPinnedTool(script: string, args: string[], env?: NodeJS
   return withTempFolder((folder) => runProcess(process.execPath, [join(tools, "node_modules", script), ...args], folder, TOOL_TIMEOUT_MS, env));
 }
 
-/** Runs the pinned native fallow program for this machine, as `runPinnedTool` runs a script. */
-export async function runPinnedFallow(args: string[], env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
-  const program = await fallowProgram(await installedTools());
-  if (!program) throw new Error(`coherence: no fallow program for ${process.platform}-${process.arch} in the tool cache`);
+/** Runs the pinned native program `name` for this machine, as `runPinnedTool` runs a script. */
+export async function runPinnedProgram(name: NativeProgram, args: string[], env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
+  const program = await nativeProgram(await installedTools(), name);
+  if (!program) throw new Error(`coherence: no ${name} program for ${process.platform}-${process.arch} in the tool cache`);
   return withTempFolder((folder) => runProcess(program, args, folder, TOOL_TIMEOUT_MS, env));
 }
 
@@ -94,9 +101,9 @@ function installedTools(): Promise<string> {
   return installing;
 }
 
-/** The installed native fallow program, if one of this machine's is a regular file. */
-async function fallowProgram(tools: string): Promise<string | undefined> {
-  for (const program of FALLOW_PROGRAMS) {
+/** The installed native program `name`, if one of this machine's builds is a regular file. */
+async function nativeProgram(tools: string, name: NativeProgram): Promise<string | undefined> {
+  for (const program of NATIVE_PROGRAMS[name]) {
     const path = join(tools, "node_modules", program);
     if ((await lstat(path).catch(() => undefined))?.isFile()) return path;
   }
@@ -153,14 +160,15 @@ async function usable(tools: string): Promise<string> {
 }
 
 /**
- * Whether `tools` is a real folder, not a symlink, holding every entry script and a fallow program as regular files.
- * npm can skip fallow's program, an optional dependency, and still succeed; such an install is refused rather than kept.
+ * Whether `tools` is a real folder, not a symlink, holding every entry script and every native program as regular files.
+ * npm can skip a native program, an optional dependency, and still succeed; such an install is refused rather than kept.
  */
 async function isInstalled(tools: string): Promise<boolean> {
   try {
     if (!(await lstat(tools)).isDirectory()) return false;
     for (const script of TOOL_SCRIPTS) if (!(await lstat(join(tools, "node_modules", script))).isFile()) return false;
-    return (await fallowProgram(tools)) !== undefined;
+    for (const name of Object.keys(NATIVE_PROGRAMS) as NativeProgram[]) if (!(await nativeProgram(tools, name))) return false;
+    return true;
   } catch {
     return false;
   }
