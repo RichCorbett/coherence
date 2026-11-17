@@ -25,7 +25,15 @@ change() { # the run's tree against the fixture, with both folder names stripped
   out=$(diff -ruN -x .git -x .coherence-bin "$fixture" "$1") || status=$?
   # 1 means the trees differ; anything above it means diff could not read them, and a partial change must not be judged.
   [ "$status" -le 1 ] || { echo "judge-headline: diff failed on $1" >&2; exit 2; }
-  sed -e "s#$fixture/#a/#g" -e "s#$1/#b/#g" -e $'/^[-+][-+][-+] /s/\t.*//' <<<"$out"
+  # Only the header lines name the folders; the code lines are left exactly as written.
+  python3 -I -c '
+import sys
+fixture, run = sys.argv[1] + "/", sys.argv[2] + "/"
+for line in sys.stdin.read().splitlines():
+    if line.startswith(("diff ", "--- ", "+++ ")):
+        line = line.split("\t", 1)[0].replace(fixture, "a/").replace(run, "b/")
+    print(line)
+' "$fixture" "$1" <<<"$out"
 }
 
 judge() { # change-A change-B -> the judge's JSON reply: A, B or tie, then the reason
