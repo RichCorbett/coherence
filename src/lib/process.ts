@@ -51,7 +51,14 @@ export function runProcess(command: string, args: string[], cwd: string, timeout
 
 // The plugin's own tools/package.json and package-lock.json, which pin madge, jscpd, fallow and everything they depend on.
 const TOOLS_MANIFEST = join(import.meta.dirname, "../../tools");
-const TOOL_SCRIPTS = ["madge/bin/cli.js", "jscpd/run-jscpd.js", "fallow/bin/fallow"];
+const TOOL_SCRIPTS = ["madge/bin/cli.js", "jscpd/run-jscpd.js"];
+// fallow's bin/fallow is a Node launcher that runs this native program as its child, and a time limit or stopRunning kills only the
+// process it started, so the native program would run on. coherence runs it directly instead; the lockfile pins its hash.
+// npm installs only the package matching this machine: on Linux the glibc or the musl build.
+const FALLOW_PROGRAMS =
+  process.platform === "linux"
+    ? [`@fallow-cli/linux-${process.arch}-gnu/fallow`, `@fallow-cli/linux-${process.arch}-musl/fallow`]
+    : [`@fallow-cli/${process.platform}-${process.arch}/fallow`];
 // A cold install measured about 1s on a fast connection. Two minutes allows a slow one,
 // and stops a stalled registry connection well before npm's own 5-minute fetch timeout and its retries would.
 const NPM_CI_TIMEOUT_MS = 120_000;
@@ -67,12 +74,32 @@ let installing: Promise<string> | undefined;
  * and the repo under review must not be able to supply them.
  */
 export async function runPinnedTool(script: string, args: string[], env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
+  const tools = await installedTools();
+  return withTempFolder((folder) => runProcess(process.execPath, [join(tools, "node_modules", script), ...args], folder, TOOL_TIMEOUT_MS, env));
+}
+
+/** Runs the pinned native fallow program for this machine, as `runPinnedTool` runs a script. */
+export async function runPinnedFallow(args: string[], env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
+  const program = await fallowProgram(await installedTools());
+  if (!program) throw new Error(`coherence: no fallow program for ${process.platform}-${process.arch} in the tool cache`);
+  return withTempFolder((folder) => runProcess(program, args, folder, TOOL_TIMEOUT_MS, env));
+}
+
+function installedTools(): Promise<string> {
   installing ??= installTools().catch((error) => {
     installing = undefined;
     throw error;
   });
-  const tools = await installing;
-  return withTempFolder((folder) => runProcess(process.execPath, [join(tools, "node_modules", script), ...args], folder, TOOL_TIMEOUT_MS, env));
+  return installing;
+}
+
+/** The installed native fallow program, if one of this machine's is a regular file. */
+async function fallowProgram(tools: string): Promise<string | undefined> {
+  for (const program of FALLOW_PROGRAMS) {
+    const path = join(tools, "node_modules", program);
+    if ((await lstat(path).catch(() => undefined))?.isFile()) return path;
+  }
+  return undefined;
 }
 
 /**
@@ -124,12 +151,15 @@ async function usable(tools: string): Promise<string> {
   throw new Error(`coherence: the tool cache at ${tools} is incomplete or not a plain folder; delete it and run again`);
 }
 
-/** Whether `tools` is a real folder, not a symlink, holding every entry script as a regular file. */
+/**
+ * Whether `tools` is a real folder, not a symlink, holding every entry script and a fallow program as regular files.
+ * npm can skip fallow's program, an optional dependency, and still succeed; such an install is refused rather than kept.
+ */
 async function isInstalled(tools: string): Promise<boolean> {
   try {
     if (!(await lstat(tools)).isDirectory()) return false;
     for (const script of TOOL_SCRIPTS) if (!(await lstat(join(tools, "node_modules", script))).isFile()) return false;
-    return true;
+    return (await fallowProgram(tools)) !== undefined;
   } catch {
     return false;
   }

@@ -1,13 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BaseCheck, type Finding } from "../lib/base-check.ts";
-import { runPinnedTool, withTempFolder } from "../lib/process.ts";
+import { runPinnedFallow, withTempFolder } from "../lib/process.ts";
 import type { Repo } from "../lib/repo.ts";
 
 type Unused = { path: string; export_name: string; line?: number };
 type Report = { error?: boolean; message?: string; unused_files: { path: string }[]; unused_exports: Unused[]; unused_types: Unused[] };
 
-const FALLOW = "fallow/bin/fallow";
 // A fresh cache folder and no cache, no telemetry and no update check, so a run leaves nothing behind and asks nothing of the network.
 const FALLOW_ARGS = ["dead-code", "--format", "json", "--no-cache", "--quiet"];
 
@@ -47,7 +46,7 @@ async function fallow(repo: Repo, folder: string): Promise<Report> {
   await repo.copySourceFiles(copy);
   await writeFile(config, "{}");
   const env = { FALLOW_TELEMETRY_DISABLED: "1", FALLOW_UPDATE_CHECK: "off", FALLOW_CACHE_DIR: cache };
-  const result = await runPinnedTool(FALLOW, [...FALLOW_ARGS, "--root", copy, "--config", config], env);
+  const result = await runPinnedFallow([...FALLOW_ARGS, "--root", copy, "--config", config], env);
   let report: Report;
   try {
     report = JSON.parse(result.stdout);
