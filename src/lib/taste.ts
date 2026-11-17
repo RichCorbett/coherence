@@ -30,7 +30,7 @@ export async function readTaste(shared?: string): Promise<string> {
 /**
  * The repo's shared taste as committed at `base`, never as the branch under review has it, so a branch cannot write its own
  * standard. Its text goes into the reviewer's prompt, so a file that could pass for another part of it, with a line starting
- * `===` like the prompt's own section lines, or that holds control characters, is refused with an error rather than shown.
+ * `===` like the prompt's own section lines, after any spaces that trimming would remove, or that holds control characters, is refused with an error rather than shown.
  */
 export async function readSharedTaste(repo: Repo, base: string): Promise<string | undefined> {
   const text = await repo.committedFile(base, SHARED_TASTE_FILE);
@@ -39,7 +39,7 @@ export async function readSharedTaste(repo: Repo, base: string): Promise<string 
     ? `This branch changes ${SHARED_TASTE_FILE}. Its changes are not taste until they are merged to the base: judge the code without them.`
     : undefined;
   if (text === undefined) return changed;
-  if (/^===/m.test(text) || /[\p{Cc}\u2028\u2029]/u.test(text.replace(/[\r\n\t]/g, ""))) {
+  if (/^\s*===/m.test(text) || /[\p{Cc}\u2028\u2029]/u.test(text.replace(/[\r\n\t]/g, ""))) {
     throw new Error(`${SHARED_TASTE_FILE} at the base has a line starting === or a control character; fix it on the base branch`);
   }
   return changed ? `${text.trimEnd()}\n\n${changed}` : text;
