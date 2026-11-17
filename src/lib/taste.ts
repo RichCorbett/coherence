@@ -10,7 +10,7 @@ const RULES_HEADING = "## Rules condensed so far";
 const ENTRIES_HEADING = "## Entries not yet condensed";
 
 /** Where a team commits the taste it shares, read only as committed on the base branch (#62). */
-export const SHARED_TASTE_FILE = ".coherence/taste.md";
+const SHARED_TASTE_FILE = ".coherence/taste.md";
 const SHARED_HEADING = `## Shared by the repo: ${SHARED_TASTE_FILE} as committed at the base`;
 
 /**
