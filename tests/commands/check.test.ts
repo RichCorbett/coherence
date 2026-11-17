@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { CyclesCheck } from "../../src/checks/cycles.ts";
@@ -206,4 +206,12 @@ test("a must-fix finding beside a note still fails the check, and the count name
   const checks: BaseCheck[] = [new CyclesCheck(), note];
   assert.equal(await new CheckCommand(checks).execute(invocation), Exit.findings);
   assert.equal(invocation.printed.at(-1), "coherence check: 2 finding(s) to fix (1 note(s))");
+});
+
+test("a tracked file deleted without staging the deletion is not checked, and the check still runs (#71)", async () => {
+  const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n", "src/a/two.ts": "export const two = 2;\n" });
+  rmSync(join(repo.root, "src/a/two.ts"));
+  const invocation = fakeInvocation(repo.root);
+  assert.equal(await new CheckCommand().execute(invocation), Exit.ok);
+  assert.equal(invocation.printed.at(-1), "coherence check: clean");
 });
