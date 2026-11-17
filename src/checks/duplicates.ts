@@ -40,6 +40,7 @@ export class DuplicatesCheck extends BaseCheck {
   private describe(repo: Repo, here: Side, other: Side): Finding {
     const otherPath = relative(repo.root, other.name);
     const message = `lines ${here.start}-${here.end} repeat ${otherPath}:${other.start}-${other.end}; share one version`;
-    return this.finding(relative(repo.root, here.name), message, { line: here.start });
+    // Line numbers move with every edit above the clone, so a baseline knows the clone by the file it repeats.
+    return this.finding(relative(repo.root, here.name), message, { line: here.start, key: `repeats ${otherPath}` });
   }
 }

@@ -6,8 +6,11 @@ export type Scope = "file" | "folder";
 /** A must-fix finding keeps the branch from being clean; a note is reported but leaves it clean (docs/adr/0001). */
 export type Tier = "must-fix" | "note";
 
-/** `path` is always relative to the repo root, whatever tool found the problem. */
-export type Finding = { check: string; tier: Tier; path: string; line?: number; scope: Scope; message: string };
+/**
+ * `path` is always relative to the repo root, whatever tool found the problem.
+ * `key` is what stays the same about the finding while lines around it move, so a baseline still knows it; the message when absent.
+ */
+export type Finding = { check: string; tier: Tier; path: string; line?: number; scope: Scope; message: string; key?: string };
 
 /** A deterministic rule about the code. Adding a rule means adding one file in `checks/`. */
 export abstract class BaseCheck {
@@ -18,7 +21,7 @@ export abstract class BaseCheck {
 
   abstract run(repo: Repo): Promise<Finding[]>;
 
-  protected finding(path: string, message: string, { line, scope = "file" }: { line?: number; scope?: Scope } = {}): Finding {
-    return { check: this.name, tier: this.tier, path, line, scope, message };
+  protected finding(path: string, message: string, { line, scope = "file", key }: { line?: number; scope?: Scope; key?: string } = {}): Finding {
+    return { check: this.name, tier: this.tier, path, line, scope, message, key };
   }
 }

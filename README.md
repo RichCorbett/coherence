@@ -34,6 +34,12 @@ These catch what needs no judgment, so a reviewer doesn't have to:
 - **duplicates:** copy-pasted blocks of code.
 - **flat-folder:** more than 15 source files directly in one folder.
 
+A check is in one of two tiers. A must-fix finding keeps the branch from being clean; a note is printed with `note:` and leaves it clean. The three checks above are must-fix.
+
+### Baseline
+
+On an old repo, run `coherence check --save-baseline` once. It records every current finding in `~/.config/coherence/baselines/`, one file per repository and outside it, and later checks leave out what it holds, so a branch answers only for what it adds. A duplicate is known by the two files it joins, so it stays known when lines move; a crowded folder is known by its file count, so adding a file to it is new. Save it again to accept the findings as they stand now; delete the file to drop it.
+
 Everything else is left to the reviewer's judgment: is there one idea, are similar things built the same way, were wheels reinvented, and is the solution bigger than the problem.
 
 ### Taste
@@ -68,6 +74,7 @@ Whenever I reject or correct a design choice, use the `coherence:taste` skill to
 
 ```
 coherence check [--base <ref>]            run the rule checks
+coherence check --save-baseline           record every current finding, so later checks report only new ones
 coherence pr-gate                         the hook on gh pr create
 coherence pr-gate pass --verdict <call> --branch <name> --head <id> [--base <id>]
                                           revoke the branch's review, then record a merge review of
@@ -84,6 +91,8 @@ coherence taste seen                      record today as the latest review, for
 ```
 
 ## What it can't do
+
+- The baseline lives outside the repo so a branch cannot edit it, but an agent with a shell can still run `coherence check --save-baseline` and baseline its own findings. Read the line count it prints; a guard against this is planned (#66).
 
 - The PR hook stops an agent from publishing unreviewed work through the ordinary `gh pr create` command. It is not a boundary against an agent that deliberately hides the command, through expansions, `eval`, functions defined earlier or `gh api`, a gh alias (`gh alias set pc 'pr create'`, then `gh pc`), a pipe into `xargs gh`, the name in other capitals (`GH`, which macOS finds as `gh`), or an exported `GH_REPO` from an earlier Bash call, which the hook's own environment never sees (a `gh repo set-default` is stored in git config, so the hook does read it, and refuses any default other than origin's `base`); hard enforcement belongs to GitHub branch protection with a required check. It judges only a Bash line that is exactly `gh pr create` with fixed words, and refuses any other line that mentions it, even in a commit message. It also refuses any other line whose quoted text or heredoc body holds `gh` as a word, in any case, because shell syntax is too varied to be sure where such text ends and a hidden command could sit in it; the one `--body "$(cat <<'EOF' ... EOF)"` form of a PR line is read exactly, so its body may mention gh. It ties the review to the commit at HEAD, so later commits need a new review, and to the base it was reviewed against: the PR must name, with `--base`, a local branch at that base, so a PR to another base needs a new review. A review of the whole repo, with no base, lets the PR name any base, and an approval that records no base at all, such as one left by an earlier version, needs a new review. The base is compared in the local clone, not on GitHub, so a stale local branch or a remote that moves can still give the PR a diff the review did not read: fetch before opening the PR, and rely on branch protection for hard enforcement. The branch is compared the same way: the gate refuses when a remote-tracking ref for it differs from the reviewed commit, whether under its own name on any remote (`refs/remotes/<remote>/<branch>`) or under the name of its upstream or push destination, which catches a push followed by a reset, and it refuses a branch that pushes to a remote with no tracking ref for it. Only refs under `refs/remotes/` are read, so a fetch refspec that keeps tracking refs elsewhere (such as `refs/tracking/origin/*`) hides a pushed commit from the gate. It never fetches, so these refs are only as fresh as this clone's last fetch or push: a push from another clone or by anyone else, a forged tracking ref, and a push between the check and `gh` still give the PR commits the review did not read. `pr-gate pass` records only a merge verdict on a clean tree with clean checks. It re-reads HEAD and the tree after the checks, but a file edited and put back while they run is not caught. The record is a git config value (`branch.<name>.coherence-reviewed`), and the hook refuses any Bash line that names that key, so `git config` cannot write it. That is advisory: the Edit or Write tools on `.git/config`, a key hidden from the text, or an agent running the review skill's own `pr-gate pass` line without having reviewed anything can still forge it. Owners who need enforcement should use GitHub branch protection with a required status check. If node is missing or cannot run TypeScript, or git does not run, or either takes more than 5 seconds to answer, the hook cannot read its input, so it refuses any Bash line in which `gh` appears as a word, in any case, and lets the rest run (if `grep` is missing or fails too, it refuses every line). It cannot fail closed when `bin/coherence` itself does not start, or when it passes its 30-second timeout: then Claude Code lets the command run.
 - The taste skill fires on Claude's judgment, so it can miss a correction or record something it shouldn't. It tells you each time it records one.
