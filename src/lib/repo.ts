@@ -16,16 +16,20 @@ const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c",
 // The tools that read the copy obey comments in the code that switch their findings off, and have no option to stop.
 // In the copy those words are written in capitals, which neither obeys (measured 2026-11-17), so the code under review cannot
 // silence the owner's checks; the length is the same, so every line and column stays where it was.
-// Only where the word opens a comment (//, /*, a block comment's leading *, or # for ast-grep's other languages): the tools obey it
-// nowhere else, not even later in a comment (measured 2026-11-17), so a URL, an import path or other text that holds it stays as written.
-const SUPPRESSION = /((?:\/\/|\/\*|^[ \t]*\*)[ \t]*)(ast-grep-ignore|fallow-ignore)|(#[ \t]*)(ast-grep-ignore)/gm;
+// Only where the word opens a comment in the file's language: //, /* or a block comment's leading *, or # in Python and Ruby, which
+// only ast-grep reads. The tools obey it nowhere else, not even later in a comment (measured 2026-11-17), so a URL, an import path
+// or other text that holds it stays as written, and so does a "#..." subpath import in JavaScript, where # opens no comment.
+// A string holding an opener right before the word, like "// ast-grep-ignore", is still rewritten: telling it from a comment
+// takes a lexer for every language, and the cost is a rule missing that one literal, never a check switched off.
+const SLASH_SUPPRESSION = /((?:\/\/|\/\*|^[ \t]*\*)[ \t]*)(ast-grep-ignore|fallow-ignore)/gm;
+const HASH_SUPPRESSION = /(#[ \t]*)(ast-grep-ignore)/g;
+const HASH_COMMENTS = /\.(py|rb)$/;
 
 /** Rewrites the tools' suppression comments in `file`, a copy, so that no tool obeys them. */
 export async function disarmSuppressions(file: string): Promise<void> {
   const text = await readFile(file, "utf8");
-  const disarmed = text.replace(SUPPRESSION, (_, lead?: string, word?: string, hash?: string, hashed?: string) =>
-    lead !== undefined ? lead + word!.toUpperCase() : hash! + hashed!.toUpperCase(),
-  );
+  const suppression = HASH_COMMENTS.test(file) ? HASH_SUPPRESSION : SLASH_SUPPRESSION;
+  const disarmed = text.replace(suppression, (_, lead: string, word: string) => lead + word.toUpperCase());
   if (disarmed !== text) await writeFile(file, disarmed);
 }
 
