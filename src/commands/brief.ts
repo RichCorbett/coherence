@@ -9,7 +9,8 @@ import { readTaste } from "../lib/taste.ts";
 // Past this the list costs more prompt than it saves; the agent is told to name a narrower folder.
 const MAX_NAMES = 150;
 
-// A declaration that starts a line; `export { a, b }` lists and re-exports are left out, so the list can miss names but never invents one.
+// A declaration that starts a line; `export { a, b }` lists and re-exports are left out. Raw text, not a parse: a line inside a block comment
+// or a template string can pass for one, and the reviewer still catches a helper the list missed.
 const EXPORTED = /^export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:function\*?|const|let|var|class|type|interface|enum)\s+([A-Za-z_$][\w$]*)/gm;
 
 /** Hands whatever is about to write code the rules, the owner's taste and the names that already exist near where it will write. */
@@ -33,27 +34,35 @@ export class BriefCommand extends BaseCommand {
       folders.add(path);
     }
 
-    const files = (await repo.sourceFiles()).filter((path) => SCRIPT_FILE.test(path));
-    const named = new Set(files.filter((path) => folders.has(path)).map(dirname));
-    for (const folder of folders) if (!files.includes(folder)) named.add(folder);
+    // A name holding a control character could forge a line of the brief, so such files are left out.
+    const files = (await repo.sourceFiles()).filter((path) => SCRIPT_FILE.test(path) && !/[\x00-\x1f]/.test(path));
+    // A source file, written yet or not, stands for its folder.
+    const named = new Set([...folders].map((path) => (SCRIPT_FILE.test(path) ? dirname(path) : path)));
     // Siblings share the named folder's parent: the helper the agent needs is as likely next door as in the folder itself.
     const parents = new Set([...named].map(dirname));
     const near = files.filter((path) => named.has(dirname(path)) || parents.has(dirname(dirname(path))));
 
     const lines: string[] = [];
     let shown = 0;
-    let hidden = 0;
-    for (const path of near.sort()) {
-      const names = [...(await readFile(repo.absolutePath(path), "utf8")).matchAll(EXPORTED)].map((match) => match[1]);
+    let unread = 0;
+    const sorted = near.sort();
+    for (const [at, path] of sorted.entries()) {
+      // A file that cannot be read costs its names, not the rules and taste above them.
+      const text = await readFile(repo.absolutePath(path), "utf8").catch(() => undefined);
+      if (text === undefined) {
+        unread++;
+        continue;
+      }
+      const names = [...text.matchAll(EXPORTED)].map((match) => match[1]);
       if (names.length === 0) continue;
       if (shown + names.length > MAX_NAMES) {
-        hidden += names.length;
-        continue;
+        lines.push(`... ${sorted.length - at} more file(s) not listed; name a narrower folder to see them`);
+        break;
       }
       shown += names.length;
       lines.push(`${path}: ${names.join(", ")}`);
     }
-    if (hidden > 0) lines.push(`... and ${hidden} more; name a narrower folder to see them`);
+    if (unread > 0) lines.push(`(${unread} file(s) could not be read)`);
 
     invocation.print(`=== DESIGN RULES ===\n${(await readPluginFile("rules/design.md")).trimEnd()}`);
     invocation.print(`=== OWNER TASTE ===\n${(await readTaste()).trimEnd()}`);

@@ -39,6 +39,12 @@ test("a named file briefs its folder", async (t) => {
   assert.match(out, /src\/commands\/report\.ts: report/);
 });
 
+test("a file not written yet briefs its folder and the siblings", async (t) => {
+  const { out } = await brief(t, ["src/commands/summary.ts"]);
+  assert.match(out, /src\/commands\/report\.ts: report/);
+  assert.match(out, /src\/lib\/format\.ts: formatDay/);
+});
+
 test("a folder that does not exist yet still briefs its siblings", async (t) => {
   const { out } = await brief(t, ["src/new"]);
   assert.match(out, /src\/lib\/format\.ts: formatDay/);
@@ -47,7 +53,7 @@ test("a folder that does not exist yet still briefs its siblings", async (t) => 
 test("past the cap it says how many it left out instead of printing them", async (t) => {
   const many = Object.fromEntries(Array.from({ length: 40 }, (_, at) => [`src/lib/f${String(at).padStart(2, "0")}.ts`, Array.from({ length: 5 }, (_, n) => `export const v${at}_${n} = 1;\n`).join("")]));
   const { out } = await brief(t, ["src/lib"], many);
-  assert.match(out, /\.\.\. and 50 more; name a narrower folder to see them/);
+  assert.match(out, /\.\.\. 10 more file\(s\) not listed; name a narrower folder to see them/);
   assert.doesNotMatch(out, /v30_0/);
 });
 
