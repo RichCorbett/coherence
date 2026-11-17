@@ -158,5 +158,8 @@ test("a rule that holds two rules, or reads text the disarming changes, is skipp
   });
   assert.deepEqual(await report({ ...APP, "src/b.ts": 'off("ast-grep-ignore");\n' }), ["src/app.ts:1 note say what the type is (ast-grep rule no-any)"]);
   assert.match(written.join(""), /two\.yml: it holds more than one rule/);
+  // Saved with Windows line endings too: a multiline $ in JavaScript matches before \r as well as \n (measured 2026-11-17).
+  ownerRules(t, { ...NO_LOG, "no-log.yml": `${NO_LOG["no-log.yml"]}---\n${NO_LOG["no-log.yml"].replace("no-log", "never").replace("pattern: console.log", "pattern: console.nothing")}`.replaceAll("\n", "\r\n") });
+  assert.deepEqual(await report(APP), []);
   assert.match(written.join(""), /literal\.yml: it does not report its match example/);
 });
