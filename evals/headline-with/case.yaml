@@ -1,0 +1,19 @@
+schema_version: "1.1"
+name: headline-with
+description: The headline claim, end to end (#56). An agent builds two commands, then runs coherence's own loop (check, then the readability reviewer) and fixes what it finds. Compared blind against headline-without by scripts/judge-headline.
+tags: [headline]
+runs: 3
+execution:
+  max_turns: 60
+  timeout_seconds: 1500
+  allowed_tools: [Agent, Read, Glob, Grep, Bash, Write, Edit]
+  prompt: |
+    Add two commands to this bot. `book <desk> <YYYY-MM-DD> <person>` adds the person to that desk's booking on that day, creating the booking if there is none, and answers with one confirmation line. `cancel <desk> <YYYY-MM-DD> <person>` removes the person and answers with one confirmation line; a booking left with nobody is removed. Wrong or missing arguments, or nothing to cancel, answer with one line saying what is wrong.
+    Do not run or test them; just write them, then commit your work on the current branch.
+    Then review it with coherence and fix what it finds:
+    1. Run `./.coherence-bin/coherence check --base main`. Fix every finding it lists, and commit.
+    2. Run `./.coherence-bin/coherence review-input --base main` and paste its whole output, unchanged, into the prompt of the coherence:readability-reviewer subagent. It has no shell.
+    3. Fix every must-fix finding the reviewer reports, then commit.
+    Your final message is one line: done.
+context:
+  scaffold_script: scaffold.sh

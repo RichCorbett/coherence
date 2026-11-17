@@ -97,3 +97,21 @@ A writing task (add a `summary` command) whose helper `plural` already exists in
 | brief-with | 3 | 3 | $0.157 |
 
 A ceiling result: the agent found the helper on its own every time, so this case cannot show what the brief adds. A harder case (a larger repo, or a helper in a sibling folder the task does not mention) is needed before claiming an effect.
+
+## headline-with / headline-without (#56), 2026-11-17
+
+The headline claim, end to end. Both cases start from the `clean` bot, with the agent on a branch. The task is to add `book` and `cancel` commands. `headline-with` then runs `review-input` and the readability reviewer, and fixes what it reports. `headline-without` reviews its own change for fit and fixes what it finds. `evals/scripts/judge-headline.sh` pairs the final trees by run, as plain diffs against the fixture, and asks a blind judge (Opus, no tools, safe mode) which change reads more like the repo's existing author. It asks twice with A and B swapped, and a side wins only when both orders pick it. A planted pair (one change that keeps the repo's shape, one that ignores it) was judged correctly in both orders, twice.
+
+| pair | verdict |
+|---|---|
+| 0 | tie (the two orders disagreed) |
+| 1 | without |
+| 2 | without |
+
+Cost: $1.84 for headline-with, $0.79 for headline-without, $0.53 for judging and $0.21 for validating the judge.
+
+Why, from the judge's reasons and the traces: the coherence runs brought in conventions the repo does not have. They added an abstract command layer, an `{ error }` result object, a thrown error caught in `dispatch`, and doc comments. The repo answers errors with returned strings and has no comments. The reviewer had asked for these by its own rules. In one run it said "Throw an `Error` from the parser", calling a string return something the repo did nowhere else, though `dispatch` returns strings. It also asked for an `addPerson`/`removePerson` layer under "plumbing stays apart from what the app does", where the repo's commands change `bookings` directly.
+
+Also: `coherence check` did not run in any headline-with run. It installs its tools from the npm registry on first use, and the eval sandbox blocks that host, so these runs measured the reviewer alone.
+
+One small repo and 3 pairs, so this is a signal, not proof. It says the reviewer can pull code toward its own rules rather than the repo's, which is the opposite of the headline.

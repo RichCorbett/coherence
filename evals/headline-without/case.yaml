@@ -1,0 +1,16 @@
+schema_version: "1.1"
+name: headline-without
+description: The headline claim, end to end (#56). The same task as headline-with, with the agent's own review instead of coherence's. Compared blind against headline-with by scripts/judge-headline.
+tags: [headline]
+runs: 3
+execution:
+  max_turns: 60
+  timeout_seconds: 1500
+  allowed_tools: [Read, Glob, Grep, Bash, Write, Edit]
+  prompt: |
+    Add two commands to this bot. `book <desk> <YYYY-MM-DD> <person>` adds the person to that desk's booking on that day, creating the booking if there is none, and answers with one confirmation line. `cancel <desk> <YYYY-MM-DD> <person>` removes the person and answers with one confirmation line; a booking left with nobody is removed. Wrong or missing arguments, or nothing to cancel, answer with one line saying what is wrong.
+    Do not run or test them; just write them, then commit your work on the current branch.
+    Then review your change for how well it fits the code around it, fix what you find, and commit.
+    Your final message is one line: done.
+context:
+  scaffold_script: scaffold.sh
