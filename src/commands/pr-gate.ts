@@ -32,12 +32,15 @@ const UNREADABLE_HOOK =
   "coherence pr-gate could not read the hook input, so it cannot tell whether this command opens a PR. " +
   "Claude Code's hook format may have changed: update or disable the coherence plugin.";
 
-/** What decides whether a branch passes, by a lowercase text every line that writes it must name, and who may write it (#66). */
+/**
+ * What decides whether a branch passes, by a lowercase text every line that writes it must name, and who may write it (#66).
+ * The installed plugin is not here: the review skill runs it by its absolute path under plugins/cache/coherence, so a text rule
+ * cannot tell running it from editing it.
+ */
 const GUARDED = [
   { marker: REVIEW_KEY_NAME, what: `the review record (${REVIEW_KEY_NAME})`, who: "is written only by `pr-gate pass`" },
   { marker: "--save-baseline", what: "saving the baseline", who: "the owner runs in their own terminal" },
   { marker: "coherence/baselines", what: "the owner's baseline folder", who: "only `coherence check --save-baseline` in the owner's own terminal writes" },
-  { marker: "plugins/cache/coherence", what: "coherence's installed plugin, whose hook is this gate", who: "only the owner changes, with claude plugin update" },
 ];
 
 /** Refuses to open a pull request unless the commit it would publish has had a coherence review, and records when one has. */

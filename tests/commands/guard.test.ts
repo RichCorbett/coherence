@@ -41,15 +41,6 @@ test("a Bash line naming the owner's baseline folder is refused", async () => {
   }
 });
 
-test("a Bash line naming coherence's installed plugin is refused, since its hook is the gate", async () => {
-  for (const command of [
-    "echo 'exit 0' > ~/.claude/plugins/cache/coherence/coherence/0.1.4/bin/coherence",
-    "rm -rf ~/.claude/plugins/cache/coherence",
-  ]) {
-    assert.match(refusal(await runHook(command)), /coherence's installed plugin/, command);
-  }
-});
-
 test("ordinary coherence commands and taste lines still run", async () => {
   for (const command of [
     "coherence check --base main",
@@ -57,6 +48,8 @@ test("ordinary coherence commands and taste lines still run", async () => {
     "coherence taste",
     "ls ~/.config/coherence",
     "ls ~/.claude/plugins/cache",
+    "/Users/me/.claude/plugins/cache/coherence/coherence/0.1.5/bin/coherence check --base 'main'",
+    "/Users/me/.claude/plugins/cache/coherence/coherence/0.1.5/bin/coherence review-input --base 'main'",
   ]) {
     assert.deepEqual(await runHook(command), [], command);
   }
