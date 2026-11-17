@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, realpath } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { MAX_OUTPUT_MB, type ProcessResult, runProcess } from "./process.ts";
 
@@ -12,6 +12,18 @@ export const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)
 
 // A folder in the repo under review can pose as a repository of its own, and its config can name a command for git to run.
 const REFUSE_PLANTED_REPOSITORIES = ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"];
+
+// The tools that read the copy obey comments in the code that switch their findings off, and have no option to stop.
+// In the copy those words are written in capitals, which neither obeys (measured 2026-11-17), so the code under review cannot
+// silence the owner's checks; the length is the same, so every line and column stays where it was.
+const SUPPRESSIONS = ["ast-grep-ignore", "fallow-ignore"];
+
+/** Rewrites the tools' suppression comments in `file`, a copy, so that no tool obeys them. */
+export async function disarmSuppressions(file: string): Promise<void> {
+  const text = await readFile(file, "utf8");
+  const disarmed = SUPPRESSIONS.reduce((result, word) => result.replaceAll(word, word.toUpperCase()), text);
+  if (disarmed !== text) await writeFile(file, disarmed);
+}
 
 function handWritten(paths: string[]): string[] {
   return paths.filter((path) => SOURCE_FILE.test(path) && !NOT_HAND_WRITTEN.test(path));
@@ -86,15 +98,18 @@ export class Repo {
    * Copies the source files, and the package.json and tsconfig files that say how they import each other, into `folder`.
    * A copy rather than the working tree, for a tool that must never see the repo itself: it holds no .git whose config git would obey,
    * no config file of any tool, and only regular files whose real path is where git lists them, so no symlink leads out of the repo.
+   * The source files' suppression comments are disarmed, so no tool's finding can be switched off from the code.
    */
   async copySourceFiles(folder: string): Promise<void> {
     const listed = await this.listedFiles();
     const realRoot = await realpath(this.root);
-    for (const path of [...handWritten(listed), ...listed.filter((path) => PROJECT_FILE.test(path))]) {
+    const source = new Set(handWritten(listed));
+    for (const path of [...source, ...listed.filter((path) => PROJECT_FILE.test(path))]) {
       const from = join(realRoot, path);
       if (!(await lstat(from).catch(() => undefined))?.isFile() || (await realpath(from)) !== from) continue;
       await mkdir(dirname(join(folder, path)), { recursive: true });
       await copyFile(from, join(folder, path));
+      if (source.has(path)) await disarmSuppressions(join(folder, path));
     }
   }
 

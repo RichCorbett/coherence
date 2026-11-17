@@ -70,3 +70,11 @@ test("fallow never sees the repo: its fallow config, its .git and its symlinks r
   assert.doesNotMatch(outcome, /canary/i);
   assert.match(outcome, /export unused is not imported anywhere/);
 });
+
+test("the repo's fallow-ignore comments cannot hide dead code from the owner's check", async () => {
+  const lib = "// fallow-ignore-file\nexport const used = 1;\n// fallow-ignore-next-line unused-export\nexport const unused = 2;\nexport type Unused = number;\n";
+  assert.deepEqual(await report({ ...APP, "src/lib.ts": lib }), [
+    "src/lib.ts:4 note export unused is not imported anywhere; remove it or say why it is public",
+    "src/lib.ts:5 note type Unused is not imported anywhere; remove it or say why it is public",
+  ]);
+});

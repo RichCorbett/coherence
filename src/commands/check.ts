@@ -11,6 +11,7 @@ import { DeadCodeCheck } from "../checks/dead-code.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
 import { FirstImportCheck } from "../checks/first-import.ts";
 import { FlatFolderCheck } from "../checks/flat-folder.ts";
+import { ReinventedCheck } from "../checks/reinvented.ts";
 
 const CHECKS: BaseCheck[] = [
   new CyclesCheck(),
@@ -19,6 +20,7 @@ const CHECKS: BaseCheck[] = [
   new FirstImportCheck(),
   new DeadCodeCheck(),
   new AstGrepCheck(),
+  new ReinventedCheck(),
 ];
 
 /** Runs every deterministic rule, so reviewers can spend their attention on judgment. */

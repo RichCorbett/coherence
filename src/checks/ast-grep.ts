@@ -3,17 +3,13 @@ import { basename, join, relative } from "node:path";
 import { BaseCheck, type Finding, type Tier } from "../lib/base-check.ts";
 import { ownerFile } from "../lib/owner-state.ts";
 import { runPinnedProgram, withTempFolder } from "../lib/process.ts";
-import type { Repo } from "../lib/repo.ts";
+import { disarmSuppressions, type Repo } from "../lib/repo.ts";
 
 type Match = { file: string; ruleId: string; severity: string; message: string; text: string; range: { start: { line: number } } };
 
 // ast-grep skips hidden folders and files its ignore files name. The copy it reads holds none of the repo's ignore files,
 // but a source file in a dot-folder is still the repo's code, and an ignore file above the cache folder is not the repo's to apply.
 const READ_EVERYTHING = ["hidden", "dot", "exclude", "global", "parent", "vcs"].flatMap((kind) => ["--no-ignore", kind]);
-// ast-grep obeys an `ast-grep-ignore` comment in the code it scans, and has no option to stop, so the repo could switch the owner's
-// rules off line by line. In the copy the word is written in capitals, which ast-grep does not obey (measured 2026-11-17); the
-// length is the same, so every line and column stays where it was.
-const SUPPRESSION = "ast-grep-ignore";
 
 /**
  * The owner's own mechanical rules, written for ast-grep. Each is `<name>.yml` in the owner's `ast-grep` config folder, beside two
@@ -34,7 +30,6 @@ export class AstGrepCheck extends BaseCheck {
       await mkdir(copy);
       await mkdir(examples);
       await repo.copySourceFiles(copy);
-      for (const path of await repo.sourceFiles()) await disarmSuppressions(join(copy, path));
       const found: Match[] = [];
       for (const rule of rules) {
         const failure = await examplesFail(rule, config, examples);
@@ -76,12 +71,6 @@ async function ownerRules(): Promise<Rule[]> {
 
 /** ast-grep refused to scan, such as for a rule it cannot read, as opposed to failing to start or finish. */
 class ScanRefused extends Error {}
-
-/** Writes the suppression comments in a copied file so that ast-grep does not obey them. A file the copy left out is skipped. */
-async function disarmSuppressions(file: string): Promise<void> {
-  const text = await readFile(file, "utf8").catch(() => undefined);
-  if (text?.includes(SUPPRESSION)) await writeFile(file, text.replaceAll(SUPPRESSION, SUPPRESSION.toUpperCase()));
-}
 
 /**
  * Why `rule` may not run, or undefined when it reports its match example and leaves its clean one alone.
