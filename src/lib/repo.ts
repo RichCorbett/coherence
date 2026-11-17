@@ -1,8 +1,11 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, lstat, mkdir, realpath } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { MAX_OUTPUT_MB, type ProcessResult, runProcess } from "./process.ts";
 
 const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|c|h|cc|cpp|swift)$/;
+
+// The files besides source that say how source files import each other: package manifests and TypeScript or JavaScript project files.
+const PROJECT_FILE = /(^|\/)(package\.json|[tj]sconfig[^/]*\.json)$/;
 
 // Nobody reads these to follow how the system works, so they are not held to the standard.
 export const NOT_HAND_WRITTEN = /(^|\/)(node_modules|vendor|dist|build|fixtures)\//;
@@ -77,6 +80,22 @@ export class Repo {
     const unpacked = await runProcess("tar", ["-xf", tar, "-C", tree], folder);
     if (unpacked.code !== 0) throw new Error(`tar failed: ${firstLine(unpacked.stderr)}`);
     return tree;
+  }
+
+  /**
+   * Copies the source files, and the package.json and tsconfig files that say how they import each other, into `folder`.
+   * A copy rather than the working tree, for a tool that must never see the repo itself: it holds no .git whose config git would obey,
+   * no config file of any tool, and only regular files whose real path is where git lists them, so no symlink leads out of the repo.
+   */
+  async copySourceFiles(folder: string): Promise<void> {
+    const listed = await this.listedFiles();
+    const realRoot = await realpath(this.root);
+    for (const path of [...handWritten(listed), ...listed.filter((path) => PROJECT_FILE.test(path))]) {
+      const from = join(realRoot, path);
+      if (!(await lstat(from).catch(() => undefined))?.isFile() || (await realpath(from)) !== from) continue;
+      await mkdir(dirname(join(folder, path)), { recursive: true });
+      await copyFile(from, join(folder, path));
+    }
   }
 
   private async branchPoint(base: string): Promise<string> {
@@ -198,11 +217,15 @@ export class Repo {
   }
 
   private async splitSourceFiles(): Promise<{ kept: string[]; skipped: string[] }> {
+    const source = (await this.listedFiles()).filter((path) => SOURCE_FILE.test(path));
+    return { kept: source.filter((path) => !NOT_HAND_WRITTEN.test(path)), skipped: source.filter((path) => NOT_HAND_WRITTEN.test(path)) };
+  }
+
+  private async listedFiles(): Promise<string[]> {
     // Untracked files count too: the checks run when code is written, usually before `git add`. Ignored files stay out.
     // A file deleted from the working tree stays in the index until the deletion is staged, and there is nothing left to check (#71).
     const deleted = new Set(await this.gitPaths(["ls-files", "-z", "--deleted"]));
-    const source = (await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).filter((path) => SOURCE_FILE.test(path) && !deleted.has(path));
-    return { kept: source.filter((path) => !NOT_HAND_WRITTEN.test(path)), skipped: source.filter((path) => NOT_HAND_WRITTEN.test(path)) };
+    return (await this.gitPaths(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).filter((path) => !deleted.has(path));
   }
 
   private async gitPaths(args: string[]): Promise<string[]> {

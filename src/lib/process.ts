@@ -29,12 +29,12 @@ export function resumeRunning(): void {
 
 /**
  * Runs a program to completion. A non-zero exit is a result to inspect, not an error.
- * With `timeoutMs`, a program still running after that long is killed and the call fails.
+ * With `timeoutMs`, a program still running after that long is killed and the call fails. `env` adds to this process's environment.
  */
-export function runProcess(command: string, args: string[], cwd: string, timeoutMs?: number): Promise<ProcessResult> {
+export function runProcess(command: string, args: string[], cwd: string, timeoutMs?: number, env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
   if (stopped) return Promise.reject(new Error(`coherence is stopping; ${command} ${args[0] ?? ""} was not started`));
   return new Promise((resolve, reject) => {
-    const child = execFile(command, args, { cwd, maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8", timeout: timeoutMs }, (error, stdout, stderr) => {
+    const child = execFile(command, args, { cwd, env: { ...process.env, ...env }, maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8", timeout: timeoutMs }, (error, stdout, stderr) => {
       if (error?.killed && timeoutMs !== undefined) {
         // Only the first argument, which names the subcommand or script; the rest can be thousands of file paths.
         return reject(new Error(`${command} ${args[0] ?? ""} did not finish within ${timeoutMs / 1000}s`));
@@ -49,9 +49,17 @@ export function runProcess(command: string, args: string[], cwd: string, timeout
   });
 }
 
-// The plugin's own tools/package.json and package-lock.json, which pin madge, jscpd and everything they depend on.
+// The plugin's own tools/package.json and package-lock.json, which pin madge, jscpd, fallow and everything they depend on.
 const TOOLS_MANIFEST = join(import.meta.dirname, "../../tools");
 const TOOL_SCRIPTS = ["madge/bin/cli.js", "jscpd/run-jscpd.js"];
+// fallow's bin/fallow is a Node launcher that runs this native program as its child, and a time limit or stopRunning kills only the
+// process it started, so the native program would run on. coherence runs it directly instead; the lockfile pins its hash.
+// On Linux the lockfile does not restrict the builds by libc, so npm can install both. The musl build comes first: it is statically
+// linked and runs on glibc too (fallow's own launcher says so), while the glibc build cannot start on musl.
+const FALLOW_PROGRAMS =
+  process.platform === "linux"
+    ? [`@fallow-cli/linux-${process.arch}-musl/fallow`, `@fallow-cli/linux-${process.arch}-gnu/fallow`]
+    : [`@fallow-cli/${process.platform}-${process.arch}/fallow`];
 // A cold install measured about 1s on a fast connection. Two minutes allows a slow one,
 // and stops a stalled registry connection well before npm's own 5-minute fetch timeout and its retries would.
 const NPM_CI_TIMEOUT_MS = 120_000;
@@ -66,13 +74,33 @@ let installing: Promise<string> | undefined;
  * It runs from an empty folder because the tools read config files such as .madgerc and .jscpd.json from their working folder,
  * and the repo under review must not be able to supply them.
  */
-export async function runPinnedTool(script: string, args: string[]): Promise<ProcessResult> {
+export async function runPinnedTool(script: string, args: string[], env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
+  const tools = await installedTools();
+  return withTempFolder((folder) => runProcess(process.execPath, [join(tools, "node_modules", script), ...args], folder, TOOL_TIMEOUT_MS, env));
+}
+
+/** Runs the pinned native fallow program for this machine, as `runPinnedTool` runs a script. */
+export async function runPinnedFallow(args: string[], env?: NodeJS.ProcessEnv): Promise<ProcessResult> {
+  const program = await fallowProgram(await installedTools());
+  if (!program) throw new Error(`coherence: no fallow program for ${process.platform}-${process.arch} in the tool cache`);
+  return withTempFolder((folder) => runProcess(program, args, folder, TOOL_TIMEOUT_MS, env));
+}
+
+function installedTools(): Promise<string> {
   installing ??= installTools().catch((error) => {
     installing = undefined;
     throw error;
   });
-  const tools = await installing;
-  return withTempFolder((folder) => runProcess(process.execPath, [join(tools, "node_modules", script), ...args], folder, TOOL_TIMEOUT_MS));
+  return installing;
+}
+
+/** The installed native fallow program, if one of this machine's is a regular file. */
+async function fallowProgram(tools: string): Promise<string | undefined> {
+  for (const program of FALLOW_PROGRAMS) {
+    const path = join(tools, "node_modules", program);
+    if ((await lstat(path).catch(() => undefined))?.isFile()) return path;
+  }
+  return undefined;
 }
 
 /**
@@ -99,7 +127,7 @@ export async function installTools(manifest = TOOLS_MANIFEST): Promise<string> {
     // npm is found on PATH, as `node` is when bin/coherence runs, so trusting PATH for it adds no new exposure.
     // The plugin targets POSIX systems (bin/coherence is sh), so Windows' npm.cmd is out of scope.
     const failure = await runProcess("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], staging, NPM_CI_TIMEOUT_MS).then(
-      (result) => (result.code === 0 ? undefined : new Error(`installing madge and jscpd failed: ${result.stderr.trim() || result.stdout.trim()}`)),
+      (result) => (result.code === 0 ? undefined : new Error(`installing the tools failed: ${result.stderr.trim() || result.stdout.trim()}`)),
       (error: Error) => error,
     );
     if (failure) {
@@ -124,12 +152,15 @@ async function usable(tools: string): Promise<string> {
   throw new Error(`coherence: the tool cache at ${tools} is incomplete or not a plain folder; delete it and run again`);
 }
 
-/** Whether `tools` is a real folder, not a symlink, holding every entry script as a regular file. */
+/**
+ * Whether `tools` is a real folder, not a symlink, holding every entry script and a fallow program as regular files.
+ * npm can skip fallow's program, an optional dependency, and still succeed; such an install is refused rather than kept.
+ */
 async function isInstalled(tools: string): Promise<boolean> {
   try {
     if (!(await lstat(tools)).isDirectory()) return false;
     for (const script of TOOL_SCRIPTS) if (!(await lstat(join(tools, "node_modules", script))).isFile()) return false;
-    return true;
+    return (await fallowProgram(tools)) !== undefined;
   } catch {
     return false;
   }

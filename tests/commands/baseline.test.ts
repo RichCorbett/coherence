@@ -30,7 +30,9 @@ function commit(root: string, files: Record<string, string>): void {
   git(root, "commit", "-q", "-m", "change");
 }
 
+// The package.json makes a.ts an entry point, so dead-code has nothing to note and the counts below are the cycle's alone.
 const CYCLE = {
+  "package.json": JSON.stringify({ main: "src/c/a.ts" }),
   "src/c/a.ts": 'import { b } from "./b.ts";\nexport const a = b;\n',
   "src/c/b.ts": 'import { a } from "./a.ts";\nexport const b = a;\n',
 };
