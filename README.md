@@ -33,8 +33,9 @@ These catch what needs no judgment, so a reviewer doesn't have to:
 - **cycles:** import cycles, type-only ones included. Imports through `paths` aliases are followed when the repo has a plain (not symlinked) `tsconfig.json` at its root; only its `baseUrl` and the `paths` aliases whose targets all stay inside the repo, symlinks resolved, are used, so `extends`, outside targets, comments in the file and a nested package's own tsconfig are not.
 - **duplicates:** copy-pasted blocks of code.
 - **flat-folder:** more than 15 source files directly in one folder.
+- **first-import** (a note, with `--base` only): the first import from one folder into another, compared with where the branch began, so a new direction between existing layers is seen without any layer config. Imports out of a folder the branch added are not counted. The base is read from a `git archive` export of the branch point, never a checkout.
 
-A check is in one of two tiers. A must-fix finding keeps the branch from being clean; a note is printed with `note:` and leaves it clean. The three checks above are must-fix.
+A check is in one of two tiers. A must-fix finding keeps the branch from being clean; a note is printed with `note:` and leaves it clean. cycles, duplicates and flat-folder are must-fix; first-import is a note.
 
 ### Baseline
 

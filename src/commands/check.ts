@@ -7,12 +7,14 @@ import { stopRunning } from "../lib/process.ts";
 import { Repo } from "../lib/repo.ts";
 import { CyclesCheck } from "../checks/cycles.ts";
 import { DuplicatesCheck } from "../checks/duplicates.ts";
+import { FirstImportCheck } from "../checks/first-import.ts";
 import { FlatFolderCheck } from "../checks/flat-folder.ts";
 
 const CHECKS: BaseCheck[] = [
   new CyclesCheck(),
   new DuplicatesCheck(),
   new FlatFolderCheck(),
+  new FirstImportCheck(),
 ];
 
 /** Runs every deterministic rule, so reviewers can spend their attention on judgment. */
@@ -35,7 +37,7 @@ export class CheckCommand extends BaseCommand {
 
     let findings: Finding[];
     try {
-      findings = (await Promise.all(this.checks.map((check) => check.run(repo)))).flat();
+      findings = (await Promise.all(this.checks.map((check) => check.run(repo, base)))).flat();
     } catch (error) {
       // Promise.all returns at the first failure and leaves the other checks' programs running; stop them, since the run has failed.
       stopRunning();

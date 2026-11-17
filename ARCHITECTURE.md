@@ -25,7 +25,7 @@ There are two kinds of thing, and each has a folder, one file each, and one shap
 - `src/commands/*.ts` extends `BaseCommand`: one thing the `coherence` CLI can do.
 - `src/checks/*.ts` extends `BaseCheck`: one deterministic rule.
 
-Everything else is machinery in `src/lib/`. Checks read code through `Repo`, and two (`cycles`, `duplicates`) also
+Everything else is machinery in `src/lib/`. Checks read code through `Repo`, and three (`cycles`, `first-import`, `duplicates`) also
 delegate to external tools, madge and jscpd, installed once from the plugin's own lockfile (`tools/`) with `npm ci --ignore-scripts` and run from an empty folder, so the repo under review cannot replace or configure them. A `Finding`'s path is always relative to the
 repo root, and its scope (file or folder) says when a branch is answerable for it. Every command returns one of
 the named `Exit` codes; an error that escapes a command is printed as one line by `main.ts` and exits `Exit.failed`.
