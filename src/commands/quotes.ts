@@ -32,7 +32,7 @@ function holds(entry: string, quote: string): boolean {
 export class QuotesCommand extends BaseCommand {
   readonly name = "quotes";
   readonly usage =
-    "coherence quotes [--base <ref>] '<quoted rule>'...  (exits 1 when any quote is not found word for word in the rules or taste; with --base, the repo's shared taste at that ref counts too)";
+    "coherence quotes [--base <ref>] [--] '<quoted rule>'...  (exits 1 when any quote is not found word for word in the rules or taste; with --base, the repo's shared taste at that ref counts too)";
 
   async execute(invocation: Invocation): Promise<number> {
     const { values, positionals } = parseArgs({ args: invocation.args, options: { base: { type: "string" } }, allowPositionals: true });
