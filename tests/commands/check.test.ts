@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { CyclesCheck } from "../../src/checks/cycles.ts";
 import { CheckCommand } from "../../src/commands/check.ts";
 import { BaseCheck, type Finding } from "../../src/lib/base-check.ts";
 import { Exit } from "../../src/lib/base-command.ts";
@@ -167,4 +168,40 @@ test("when one check fails, a program another check starts afterwards is never s
   await assert.rejects(new CheckCommand(checks).execute(fakeInvocation(repo.root)), { message: "tool failed" });
   await new Promise((done) => setTimeout(done, 300));
   assert.equal(existsSync(marker), false);
+});
+
+class NoteCheck extends StubCheck {
+  override readonly tier = "note";
+}
+
+test("a note is printed and marked as a note, but leaves the branch clean", async () => {
+  const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
+  const note = new NoteCheck("noisy", async () => [{ check: "noisy", tier: "note", path: "src/a/one.ts", scope: "file", message: "maybe fine" }]);
+  const invocation = fakeInvocation(repo.root);
+  assert.equal(await new CheckCommand([note]).execute(invocation), Exit.ok);
+  assert.ok(invocation.printed.includes("src/a/one.ts [noisy] note: maybe fine"));
+  assert.equal(invocation.printed.at(-1), "coherence check: clean (1 note(s))");
+});
+
+test("a note check stamps its findings as notes", async () => {
+  const repo = await tempRepo({ "src/a/one.ts": "export const one = 1;\n" });
+  class Stamping extends BaseCheck {
+    readonly name = "stamping";
+    override readonly tier = "note";
+    async run(): Promise<Finding[]> {
+      return [this.finding("src/a/one.ts", "maybe fine")];
+    }
+  }
+  const invocation = fakeInvocation(repo.root);
+  assert.equal(await new CheckCommand([new Stamping()]).execute(invocation), Exit.ok);
+  assert.ok(invocation.printed.includes("src/a/one.ts [stamping] note: maybe fine"));
+});
+
+test("a must-fix finding beside a note still fails the check, and the count names only what must be fixed", async () => {
+  const repo = await tempRepo(CYCLE);
+  const note = new NoteCheck("noisy", async () => [{ check: "noisy", tier: "note", path: "src/a/a.ts", scope: "file", message: "maybe fine" }]);
+  const invocation = fakeInvocation(repo.root);
+  const checks: BaseCheck[] = [new CyclesCheck(), note];
+  assert.equal(await new CheckCommand(checks).execute(invocation), Exit.findings);
+  assert.equal(invocation.printed.at(-1), "coherence check: 2 finding(s) to fix (1 note(s))");
 });
