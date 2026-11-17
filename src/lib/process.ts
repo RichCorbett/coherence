@@ -54,10 +54,11 @@ const TOOLS_MANIFEST = join(import.meta.dirname, "../../tools");
 const TOOL_SCRIPTS = ["madge/bin/cli.js", "jscpd/run-jscpd.js"];
 // fallow's bin/fallow is a Node launcher that runs this native program as its child, and a time limit or stopRunning kills only the
 // process it started, so the native program would run on. coherence runs it directly instead; the lockfile pins its hash.
-// npm installs only the package matching this machine: on Linux the glibc or the musl build.
+// On Linux the lockfile does not restrict the builds by libc, so npm can install both. The musl build comes first: it is statically
+// linked and runs on glibc too (fallow's own launcher says so), while the glibc build cannot start on musl.
 const FALLOW_PROGRAMS =
   process.platform === "linux"
-    ? [`@fallow-cli/linux-${process.arch}-gnu/fallow`, `@fallow-cli/linux-${process.arch}-musl/fallow`]
+    ? [`@fallow-cli/linux-${process.arch}-musl/fallow`, `@fallow-cli/linux-${process.arch}-gnu/fallow`]
     : [`@fallow-cli/${process.platform}-${process.arch}/fallow`];
 // A cold install measured about 1s on a fast connection. Two minutes allows a slow one,
 // and stops a stalled registry connection well before npm's own 5-minute fetch timeout and its retries would.

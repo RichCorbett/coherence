@@ -6,8 +6,8 @@ import { test, type TestContext } from "node:test";
 import { installTools, runPinnedFallow, runPinnedTool, runProcess } from "../../src/lib/process.ts";
 import { setEnv, tempFolder, writeFiles } from "../helpers/sandbox.ts";
 
-// This machine's native fallow program, where npm puts it; on Linux the glibc build, which the stubs below install.
-const FALLOW = `@fallow-cli/${process.platform}-${process.arch}${process.platform === "linux" ? "-gnu" : ""}/fallow`;
+// This machine's native fallow program, where npm puts it; on Linux the musl build, which runs on glibc too.
+const FALLOW = `@fallow-cli/${process.platform}-${process.arch}${process.platform === "linux" ? "-musl" : ""}/fallow`;
 const REFUSED = /^coherence: the tool cache at .+ is incomplete or not a plain folder; delete it and run again$/;
 // The child gives up after 3s by itself, so a missing stdin end fails this test instead of hanging the run.
 const WAITS_FOR_STDIN = "process.stdin.resume(); process.stdin.on('end', () => process.exit(0)); setTimeout(() => process.exit(3), 3000);";
