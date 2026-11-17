@@ -1084,3 +1084,38 @@ test("a branch that pushes to a remote with no tracking ref for it is refused, s
   const reason = refusal(await runHook(repo.root, "gh pr create --fill"));
   assert.match(reason, /could not check it: branch feature pushes to backup, which keeps no remote-tracking ref for it here/);
 });
+
+test("a Bash line that saves the baseline is refused, however it is spelled or wrapped", async () => {
+  for (const command of [
+    "coherence check --save-baseline",
+    '"${CLAUDE_PLUGIN_ROOT}/bin/coherence" check --save-baseline',
+    "XDG_CONFIG_HOME=/tmp/x node src/main.ts check --SAVE-BASELINE",
+    "cd repo && bin/coherence check --save-baseline; echo done",
+  ]) {
+    assert.match(refusal(await runHook(tempFolder(), command)), /saving the baseline, which the owner runs in their own terminal/, command);
+  }
+});
+
+test("a Bash line naming the owner's baseline folder is refused", async () => {
+  for (const command of [
+    "echo '{}' > ~/.config/coherence/baselines/abc.json",
+    "rm -rf $HOME/.config/coherence/baselines",
+    "cp mine.json /Users/me/.config/Coherence/Baselines/abc.json",
+  ]) {
+    assert.match(refusal(await runHook(tempFolder(), command)), /the owner's baseline folder/, command);
+  }
+});
+
+test("ordinary coherence commands and taste lines still run", async () => {
+  for (const command of [
+    "coherence check --base main",
+    '"${CLAUDE_PLUGIN_ROOT}/bin/coherence" taste add "prefer plain names"',
+    "coherence taste",
+    "ls ~/.config/coherence",
+    "ls ~/.claude/plugins/cache",
+    "/Users/me/.claude/plugins/cache/coherence/coherence/0.1.5/bin/coherence check --base 'main'",
+    "/Users/me/.claude/plugins/cache/coherence/coherence/0.1.5/bin/coherence review-input --base 'main'",
+  ]) {
+    assert.deepEqual(await runHook(tempFolder(), command), [], command);
+  }
+});
