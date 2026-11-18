@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: taste-shared
-description: Taste a team committed to .coherence/taste.md on the base branch changes what the reviewer raises, as the owner's log does in taste-applied; the branch's own edit to that file does not.
+description: Taste a team committed to .coherence/taste.md on the base branch changes what the reviewer raises, as the owner's log does in taste-applied; the branch's own edit to that file does not. Since 0.1.15 the review skill no longer runs the reader on a branch, so only review-input --base, run by hand as here, reads shared taste.
 tags: [taste]
 runs: 3
 execution:

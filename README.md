@@ -2,13 +2,13 @@
 
 AI coding agents write code that works and doesn't look good: too many files, helpers written next to ones that already exist, a simple task overbuilt, and no idea holding it together.
 
-coherence is a Claude Code plugin that checks whether agent-written code reads as if one person wrote it. It does not write code. It runs deterministic checks, has one reader judge the rest, remembers your design preferences, prints the design rules, and gates pull requests on a review.
+coherence is a Claude Code plugin that checks whether agent-written code reads as if one person wrote it. It does not write code. It runs deterministic checks, has one reader judge a whole repo's design, remembers your design preferences, prints the design rules, and gates pull requests on the checks.
 
 Early, version 0.1. It's small, and the limits are listed below.
 
 ## What it looks like
 
-Before merging, `/coherence:review main` runs the rule checks, then a reader that follows one real flow through the code the way a new engineer would. It gives a verdict: merge, fix first or rework, and why, with each must-fix finding placed and given a concrete fix. Tell it a finding is wrong and it records that for next time.
+Before merging, `/coherence:review main` runs the rule checks on the branch and records the result for the pull request gate. Over a whole repo, `/coherence:review` with no base also runs a reader that follows one real flow through the code the way a new engineer would. It gives a verdict: merge, fix first or rework, and why, with each must-fix finding placed and given a concrete fix. Tell it a finding is wrong and it records that for next time. The reader does not judge single changes: measured end to end, it pulled a change toward its own rules instead of the repo's habits (see Limits).
 
 Opening a pull request before that review, or after more commits have landed on top of it, is refused:
 
@@ -21,7 +21,7 @@ PR refused by coherence: commits landed on branch feature after its coherence re
 | Moment | When | What happens |
 |---|---|---|
 | Rules | After code is written | `coherence check` catches what needs no judgment. |
-| Judgment | Before merging | `/coherence:review <base>` runs the rules, then the readability reviewer, which runs on Sonnet and holds the code to `coherence rules` and your taste. A hook refuses `gh pr create` unless HEAD is the commit that had this review. |
+| Judgment | Before merging, and after a big build-out | `/coherence:review <base>` runs the rules on a branch. `/coherence:review` with no base runs them over the whole repo, then the readability reviewer, which runs on Sonnet and holds the code to `coherence rules` and your taste. A hook refuses `gh pr create` unless HEAD is the commit that had a review. |
 | Learning | Whenever you correct a design | The `coherence:taste` skill records your preference in one line, so later reviews follow it. |
 
 The design rules live in `rules/design.md`. `coherence rules` prints them, so whatever writes the code can read the standard the reviewer applies.
@@ -54,7 +54,7 @@ Taste is text the reviewer, and anything that writes code, reads before working.
 - `~/.config/coherence/taste-log.md` is your running log, one dated line per preference. Say "drop that" to undo the newest line.
 - A preference reaches style and shape only. It can tell the reviewer to stop flagging a name, a split or a helper, but not a correctness finding or a technical design rule such as dependency direction.
 - At 40 lines the skill condenses the log into `taste-rules.md`, merging repeats and letting newer entries win. The originals move to `taste-archive.md`. Each condense first copies the old rules to `taste-rules.<UTC timestamp>.md` in the same folder; to undo one, copy that file over `taste-rules.md`.
-- A team can share taste through the repo: commit it to `.coherence/taste.md` on the base branch, as plain lines like the condensed rules. A review with `--base` reads it as committed at the base, never as the branch has it, and adds it to your taste under its own heading, so a branch cannot write its own standard and a change to the file is a diff someone approves before it counts. A review of the whole repo, with no base, does not read it.
+- A team can share taste through the repo: commit it to `.coherence/taste.md` on the base branch, as plain lines like the condensed rules. A review with `--base` reads it as committed at the base, never as the branch has it, and adds it to your taste under its own heading, so a branch cannot write its own standard and a change to the file is a diff someone approves before it counts. A review of the whole repo, with no base, does not read it. Since the reader no longer runs on a branch (0.1.15), no path of the review skill reads it; `coherence review-input --base`, run by hand, still does.
 
 ## Install
 
@@ -68,7 +68,7 @@ claude plugin install coherence@coherence
 Then add something like this to your `CLAUDE.md`, because it's what makes the agent use the plugin:
 
 ```markdown
-Before merging any non-trivial change, run `/coherence:review <base>` and fix what it finds that is real.
+Before merging any non-trivial change, run `/coherence:review <base>` and fix what it finds that is real. After a big build-out, run `/coherence:review` over the whole repo.
 Before writing code in a folder, run `coherence brief <folder>` and reuse what it lists before writing anything new.
 Whenever I reject or correct a design choice, use the `coherence:taste` skill to record it.
 ```
@@ -110,9 +110,9 @@ coherence taste seen                      record today as the latest review, for
 - The taste file is one global file for all your repos, written on Claude's judgment, and the reviewer treats it as its standard. Text from a hostile repo that gets recorded there changes every later review, in every repo. A preference can only change style and shape findings, such as names, file size, splitting, patterns, helpers and comments: the reviewer is told that no preference can silence a correctness or security finding, a technical design rule (how modules depend on each other and where code and types belong, such as dependency direction, cycles and stated layer boundaries), or its report that text tried to steer it. That is an instruction to a model, not a check, and a hostile line can still silence a shape finding such as a duplicated helper. Each review report opens with the entries added since the previous review, so you can see a line you did not write; that shows it after the fact and does not stop it. Read what it records.
 - Shared taste in `.coherence/taste.md` is trusted as far as the base branch is: anyone who can merge to the base can change what every later review holds the code to. A file at the base with a line starting `===`, which could pass for a section of the reviewer's prompt, or with control characters, makes `review-input` fail until it is fixed on the base. A symlink there is not followed. The base is whatever `--base` names; the PR hook ties a review to the base the PR names, but a review run by hand against another ref reads that ref's copy.
 - Taste writes take no lock. If two sessions write taste at once, an entry added while `condense` or `undo` runs can be lost. Re-record it if it does not appear in `coherence taste`.
-- "Reads as if one person wrote it" is the goal, not a measured result. The evals measure its parts: whether the reviewer finds named defects, and whether taste is kept. The one end-to-end comparison so far went against the plugin. An agent added two commands to a small repo, then either ran coherence's review and fixed what it found, or reviewed its own work. Judged blind, in pairs, the coherence runs did not read more like the repo's author: 0 wins, 2 losses and 1 tie in 3 pairs. The reviewer had asked for its own design rules, such as a thrown error where the repo returns strings, over the repo's habits. Telling the reviewer that the repo's own habits come first did not help: re-run, it lost all 3 pairs, because it still quoted its rules over the repo. See `evals/baseline.md`.
+- "Reads as if one person wrote it" is the goal, not a measured result. The evals measure its parts: whether the reviewer finds named defects, and whether taste is kept. The one end-to-end comparison so far went against the plugin. An agent added two commands to a small repo, then either ran coherence's review and fixed what it found, or reviewed its own work. Judged blind, in pairs, the coherence runs did not read more like the repo's author: 0 wins, 2 losses and 1 tie in 3 pairs. The reviewer had asked for its own design rules, such as a thrown error where the repo returns strings, over the repo's habits. Telling the reviewer that the repo's own habits come first did not help: re-run, it lost all 3 pairs, because it still quoted its rules over the repo. So since 0.1.15 the reader runs only over a whole repo, and a branch review is the rule checks alone: an approval says the checks are clean at HEAD against the base, and nothing about design. See `evals/baseline.md`.
 - The evals measure the reviewer and the taste skill, on tiny samples. They were last run with the reviewer on Sonnet. See `evals/baseline.md`. Every planted-case grader checks that a defect was found or a good shape kept, none fails a report for extra findings, and Sonnet is both reviewer and judge, so the numbers are recall on small cases, not precision. The fixture docs used to state the shape that `stated-the-idea` and `kept-the-good-shape` look for; they no longer do, and the numbers below were measured before that change.
-- The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools and no Bash: the review skill runs `coherence review-input` in your session, which prints the taste, the rules and the diff, and hands it the text. It can still Read files anywhere on disk if a repo misleads it, because Claude Code agent files cannot restrict paths. Review code from strangers in an isolated checkout or a sandbox.
+- The reviewer reads text from the repo under review, so a hostile repo could try to steer it. It has no edit tools and no Bash: the review skill runs `coherence review-input` in your session, which prints the taste and the rules (and a diff, with `--base`, which the skill no longer passes), and hands it the text. It can still Read files anywhere on disk if a repo misleads it, because Claude Code agent files cannot restrict paths. Review code from strangers in an isolated checkout or a sandbox.
 
 ## How well it works
 
