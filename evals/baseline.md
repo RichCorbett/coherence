@@ -115,3 +115,17 @@ Why, from the judge's reasons and the traces: the coherence runs brought in conv
 Also: `coherence check` did not run in any headline-with run. It installs its tools from the npm registry on first use, and the eval sandbox blocks that host, so these runs measured the reviewer alone.
 
 One small repo and 3 pairs, so this is a signal, not proof. It says the reviewer can pull code toward its own rules rather than the repo's, which is the opposite of the headline.
+
+### Re-run: "the repo's own habits come first", 2026-11-17 21:07 EST
+
+The reviewer was given one more instruction for a diff: where the existing code does a thing one way throughout, a change that does it the same way fits, even if a design rule would pick another form, and it must grep before saying the repo does something nowhere else (branch `feat/reviewer-repo-habits`, tag `eval56b-repo-habits-negative`, not merged). Only headline-with was re-run, 3 runs; the without arm never sees the reviewer, so the same 3 kept without runs were the control.
+
+| pair | verdict |
+|---|---|
+| 0 | without |
+| 1 | without |
+| 2 | without |
+
+All three in both orders; the planted pair still came out right in both orders. Cost: $2.16 for headline-with, $0.54 for judging.
+
+The new text reached each run's reviewer (it is in the reviewer's own transcript), and the reviewer still asked for an `addPerson`/`removePerson` layer, quoting "Plumbing stays apart from what the app does", and called the string-return error shape a problem. The agent then added a thrown error class, a try/catch in `dispatch` and doc comments, and the judge named exactly those. So one paragraph of instruction does not outweigh a design rule the reviewer can quote. A fix has to change what the reviewer is given, for example the repo's measured habits as input, rather than add a sentence.
