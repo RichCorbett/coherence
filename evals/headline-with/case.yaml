@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: headline-with
-description: The headline claim, end to end (#56). An agent builds two commands, then runs coherence's own loop (check, then the readability reviewer) and fixes what it finds. Compared blind against headline-without by scripts/judge-headline.
+description: The headline claim, end to end (#56). An agent builds two commands, then runs coherence's own loop (check, then the readability reviewer) and fixes what it finds. Compared blind against headline-without by scripts/judge-headline. Since 0.1.15 the review skill no longer runs the reader on a change, so this case is the record of that path (it lost; see baseline.md).
 tags: [headline]
 runs: 3
 execution:

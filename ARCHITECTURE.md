@@ -39,11 +39,16 @@ answerable for according to each finding's scope, prints them, and exits `Exit.f
 
 ## One review, end to end
 
-`skills/review/SKILL.md` drives a review of a branch. It first runs `coherence check --base <ref>`; each finding is
-must-fix, so the reader spends no attention on what a rule can catch, unless its check is in the note tier, which is reported but leaves the branch clean (`docs/adr/0001`). Then the skill runs `coherence review-input`, which resolves the base ref to a commit ID without a shell and prints the taste, the taste entries dated since the previous review (the day is kept in `taste-last-review` beside the log, and the skill puts them at the top of its report, then records the day with `coherence taste seen` once the report is given, so gathering alone consumes nothing), the rules (`rules/design.md`
-through `readPluginFile`) and the branch diff, and pastes that into the prompt of the `readability-reviewer` subagent. The subagent
+`skills/review/SKILL.md` drives a review. On a branch it runs `coherence check --base <ref>` and nothing else; each finding is
+must-fix, unless its check is in the note tier, which is reported but leaves the branch clean (`docs/adr/0001`). The call is merge
+when the checks are clean and fix first when they are not, and the skill reads the branch and HEAD from git, since no model's reply
+is on that path. The reader does not judge a branch: judging one change against its own rules rather than the repo's habits, it made
+code read less like the repo's (#56, `evals/baseline.md`). Over a whole repo the skill runs `coherence check`, then
+`coherence review-input`, which prints the taste, the taste entries dated since the previous review (the day is kept in `taste-last-review` beside the log, and the skill puts them at the top of its report, then records the day with `coherence taste seen` once the report is given, so gathering alone consumes nothing) and the rules (`rules/design.md`
+through `readPluginFile`), and pastes that into the prompt of the `readability-reviewer` subagent. With `--base`, run by hand,
+it also prints the branch diff. The subagent
 runs on Sonnet with only Read, Glob and Grep, so repo text it reads cannot make it run anything, though it can still Read any file on disk (agent files cannot limit paths). It reads the code as a
-newcomer would. The skill reports its verdict and findings, then runs
+newcomer would. Either way the skill reports the call, then runs
 `coherence pr-gate pass --verdict <call> --branch <name> --head <id> --base <id>` whatever the call. `pass` first revokes the branch's
 earlier approval. Only for merge does it go on: it refuses unless HEAD is still that commit and the tree is clean, runs
 the `check` command again (main.ts hands it over, since commands do not import each other), checks that nothing moved

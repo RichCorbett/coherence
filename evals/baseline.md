@@ -129,3 +129,5 @@ The reviewer was given one more instruction for a diff: where the existing code 
 All three in both orders; the planted pair still came out right in both orders. Cost: $2.16 for headline-with, $0.54 for judging.
 
 The new text reached each run's reviewer (it is in the reviewer's own transcript), and the reviewer still asked for an `addPerson`/`removePerson` layer, quoting "Plumbing stays apart from what the app does", and called the string-return error shape a problem. The agent then added a thrown error class, a try/catch in `dispatch` and doc comments, and the judge named exactly those. So one paragraph of instruction does not outweigh a design rule the reviewer can quote. A fix has to change what the reviewer is given, for example the repo's measured habits as input, rather than add a sentence.
+
+So from 0.1.15 the reader does not judge a single change. A branch review is the rule checks alone, and the reader runs only over a whole repo, where there are no habits around the code to break. `headline-with` and `taste-shared` still run the reader on a diff by hand: they are kept as the record of that path, not as a test of the review skill.
