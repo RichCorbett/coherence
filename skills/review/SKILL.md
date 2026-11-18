@@ -9,12 +9,12 @@ The argument is the base ref to compare against. With one, this is a **branch re
 
 The reader does not judge a single change, because it judges a change against its own design rules rather than the habits of the repo around it: measured end to end, an agent that followed it wrote code that a blind judge found less like the repo's: of 6 blind pairs it won none, lost 5 and tied 1 (`evals/baseline.md`, #56). Over a whole repo there are no habits around the code to break, so the reader runs there.
 
-If the ref contains a single quote or a newline, stop.
+If the ref holds anything but letters, digits, `.`, `_`, `/` and `-`, stop: `pr-gate pass` accepts no other base, so a ref such as `HEAD~3` would pass the checks and then be refused.
 
 ## A branch
 
 1. **Rules.** Run `${CLAUDE_PLUGIN_ROOT}/bin/coherence check --base '<ref>'`, with the ref in single quotes. Exit 0 is clean and exit 1 means findings to fix. Each finding is must-fix, except a line marked `note:`, which leaves the branch clean: it may be right or not, so weigh it. Any other exit is a failure: stop and print the error.
-2. **Record the call.** The call is merge when step 1 exited 0, and fix first when it exited 1. Read the branch with `git symbolic-ref --short HEAD` and the commit with `git rev-parse HEAD`. No model's reply is on this path, so these come from git directly. If the branch command fails, HEAD is detached: do not run `pass`, and say so. Otherwise run the one line that matches the call:
+2. **Record the call.** The call is merge when step 1 exited 0, and fix first when it exited 1. Read the branch with `git branch --show-current`, as `pass` reads it, and the commit with `git rev-parse HEAD`. No model's reply is on this path, so these come from git directly. If the branch command prints nothing, HEAD is detached: do not run `pass`, and say so. Otherwise run the one line that matches the call:
    - merge: `${CLAUDE_PLUGIN_ROOT}/bin/coherence pr-gate pass --verdict 'merge' --branch '<BRANCH>' --head '<HEAD>' --base '<ref>'`
    - fix first: `${CLAUDE_PLUGIN_ROOT}/bin/coherence pr-gate pass --verdict 'fix first' --branch '<BRANCH>' --head '<HEAD>' --base '<ref>'`
    - If the branch name holds a single quote, do not run `pass` and say why.

@@ -49,7 +49,7 @@ through `readPluginFile`), and pastes that into the prompt of the `readability-r
 it also prints the branch diff. The subagent
 runs on Sonnet with only Read, Glob and Grep, so repo text it reads cannot make it run anything, though it can still Read any file on disk (agent files cannot limit paths). It reads the code as a
 newcomer would. Either way the skill reports the call, then runs
-`coherence pr-gate pass --verdict <call> --branch <name> --head <id> --base <id>` whatever the call. `pass` first revokes the branch's
+`coherence pr-gate pass --verdict <call> --branch <name> --head <id>` whatever the call, with `--base <ref>` on a branch. `pass` first revokes the branch's
 earlier approval. Only for merge does it go on: it refuses unless HEAD is still that commit and the tree is clean, runs
 the `check` command again (main.ts hands it over, since commands do not import each other), checks that nothing moved
 while it ran, and then stores the HEAD commit, and the base next to it, for the branch in git config. The `pr-gate` hook runs before
