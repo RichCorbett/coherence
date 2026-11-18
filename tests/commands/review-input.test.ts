@@ -269,6 +269,9 @@ test("with no base, the shared taste is read as committed on origin's default br
   // Still a whole-repo review: the default branch is where the taste comes from, not a base to diff against.
   assert.match(out, /^BASE none\n/);
   assert.match(out, /=== NO DIFF ===/);
+  // Set but broken is not the same as unknown: the review stops rather than going on without the team's taste.
+  git(repo.root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/gone");
+  await assert.rejects(run(repo.root, []), { message: /refs\/remotes\/origin\/gone is not a commit/ });
 });
 
 test("with no shared taste at the base, none is shown", async (t) => {

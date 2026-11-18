@@ -177,10 +177,15 @@ export class Repo {
     return shown.stdout;
   }
 
-  /** The commit origin's default branch points at, as the clone last saw it, or undefined when origin/HEAD is not set. */
+  /**
+   * The commit origin's default branch points at, as the clone last saw it, or undefined when origin/HEAD is not set. One that
+   * is set but names no commit throws: rev-parse reports that the same as an unset ref, and it is a broken clone, not an unknown one.
+   */
   async defaultBranchCommit(): Promise<string | undefined> {
-    const result = await git(["rev-parse", "--verify", "-q", "refs/remotes/origin/HEAD^{commit}"], this.root);
-    return result.code === 0 ? result.stdout.trim() : undefined;
+    const named = await git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"], this.root);
+    if (named.code === 1) return undefined;
+    if (named.code !== 0) throw new Error(`git symbolic-ref failed: ${firstLine(named.stderr)}`);
+    return this.resolveCommit(named.stdout.trim());
   }
 
   async currentBranch(): Promise<string | undefined> {
