@@ -177,6 +177,12 @@ export class Repo {
     return shown.stdout;
   }
 
+  /** The commit origin's default branch points at, as the clone last saw it, or undefined when origin/HEAD is not set. */
+  async defaultBranchCommit(): Promise<string | undefined> {
+    const result = await git(["rev-parse", "--verify", "-q", "refs/remotes/origin/HEAD^{commit}"], this.root);
+    return result.code === 0 ? result.stdout.trim() : undefined;
+  }
+
   async currentBranch(): Promise<string | undefined> {
     const result = await git(["branch", "--show-current"], this.root);
     return result.stdout.trim() || undefined;

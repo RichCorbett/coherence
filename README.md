@@ -54,7 +54,7 @@ Taste is text the reviewer, and anything that writes code, reads before working.
 - `~/.config/coherence/taste-log.md` is your running log, one dated line per preference. Say "drop that" to undo the newest line.
 - A preference reaches style and shape only. It can tell the reviewer to stop flagging a name, a split or a helper, but not a correctness finding or a technical design rule such as dependency direction.
 - At 40 lines the skill condenses the log into `taste-rules.md`, merging repeats and letting newer entries win. The originals move to `taste-archive.md`. Each condense first copies the old rules to `taste-rules.<UTC timestamp>.md` in the same folder; to undo one, copy that file over `taste-rules.md`.
-- A team can share taste through the repo: commit it to `.coherence/taste.md` on the base branch, as plain lines like the condensed rules. A review with `--base` reads it as committed at the base, never as the branch has it, and adds it to your taste under its own heading, so a branch cannot write its own standard and a change to the file is a diff someone approves before it counts. A review of the whole repo, with no base, does not read it. Since the reader no longer runs on a branch (0.1.15), no path of the review skill reads it; `coherence review-input --base`, run by hand, still does.
+- A team can share taste through the repo: commit it to `.coherence/taste.md` on the base branch, as plain lines like the condensed rules. A review with `--base` reads it as committed at the base, never as the branch has it, and adds it to your taste under its own heading, so a branch cannot write its own standard and a change to the file is a diff someone approves before it counts. A review of the whole repo has no base, so it reads the file as committed on origin's default branch (`origin/HEAD`), again never as the branch has it (0.1.16). When the clone does not know `origin/HEAD`, `review-input` says so and reads no shared taste; `git remote set-head origin --auto` sets it.
 
 ## Install
 
@@ -88,7 +88,7 @@ coherence pr-gate pass --verdict <call> --branch <name> --head <id> [--base <id>
                                           HEAD; refuses any other call, another branch checked out,
                                           a HEAD that moved, a base equal to HEAD, uncommitted
                                           changes, untracked files or check findings
-coherence review-input [--base <ref>]     print what the reviewer's prompt needs: taste (with the repo's shared taste at the base), rules and the diff
+coherence review-input [--base <ref>]     print what the reviewer's prompt needs: taste (with the repo's shared taste at the base, or on origin's default branch), rules and the diff
 coherence rules                           print the design rules
 coherence taste                           print your taste
 coherence taste add "..."                 record a preference

@@ -9,7 +9,10 @@ import type { Repo } from "./repo.ts";
 const RULES_HEADING = "## Rules condensed so far";
 const ENTRIES_HEADING = "## Entries not yet condensed";
 
-/** Where a team commits the taste it shares, read only as committed on the base branch (#62). */
+/**
+ * Where a team commits the taste it shares, read only as committed on the base branch (#62). A whole-repo review has no base,
+ * so origin's default branch stands in: the branch under review still cannot write its own standard.
+ */
 const SHARED_TASTE_FILE = ".coherence/taste.md";
 const SHARED_HEADING = `## Shared by the repo: ${SHARED_TASTE_FILE} as committed at the base`;
 
@@ -32,7 +35,8 @@ export async function readTaste(shared?: string): Promise<string> {
  * standard. Its text goes into the reviewer's prompt, so a file that could pass for another part of it, with a line starting
  * `===` like the prompt's own section lines, after any spaces that trimming would remove, or that holds control characters, is refused with an error rather than shown.
  */
-export async function readSharedTaste(repo: Repo, base: string): Promise<string | undefined> {
+export async function readSharedTaste(repo: Repo, base: string | undefined): Promise<string | undefined> {
+  if (base === undefined) return undefined;
   const text = await repo.committedFile(base, SHARED_TASTE_FILE);
   // The reviewer obeyed a line the branch added, seen only in the diff, in 3 of 3 eval runs (taste-shared, 2026-11-17).
   const changed = (await repo.changedFiles(base)).includes(SHARED_TASTE_FILE)
@@ -43,6 +47,11 @@ export async function readSharedTaste(repo: Repo, base: string): Promise<string 
     throw new Error(`${SHARED_TASTE_FILE} at the base has a line starting === or a control character; fix it on the base branch`);
   }
   return changed ? `${text.trimEnd()}\n\n${changed}` : text;
+}
+
+/** The commit whose shared taste a review reads: the base when there is one, else origin's default branch, if the clone knows it. */
+export async function sharedTasteBase(repo: Repo, base: string | undefined): Promise<string | undefined> {
+  return base === undefined ? repo.defaultBranchCommit() : repo.resolveCommit(base);
 }
 
 /**
