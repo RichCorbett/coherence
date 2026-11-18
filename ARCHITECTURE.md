@@ -44,7 +44,7 @@ must-fix, unless its check is in the note tier, which is reported but leaves the
 when the checks are clean and fix first when they are not, and the skill reads the branch and HEAD from git, since no model's reply
 is on that path. The reader does not judge a branch: judging one change against its own rules rather than the repo's habits, it made
 code read less like the repo's (#56, `evals/baseline.md`). Over a whole repo the skill runs `coherence check`, then
-`coherence review-input`, which prints the taste, the taste entries dated since the previous review (the day is kept in `taste-last-review` beside the log, and the skill puts them at the top of its report, then records the day with `coherence taste seen` once the report is given, so gathering alone consumes nothing) and the rules (`rules/design.md`
+`coherence review-input`, which prints the taste (with the repo's shared taste as committed on origin's default branch, since there is no base), the taste entries dated since the previous review (the day is kept in `taste-last-review` beside the log, and the skill puts them at the top of its report, then records the day with `coherence taste seen` once the report is given, so gathering alone consumes nothing) and the rules (`rules/design.md`
 through `readPluginFile`), and pastes that into the prompt of the `readability-reviewer` subagent. With `--base`, run by hand,
 it also prints the branch diff. The subagent
 runs on Sonnet with only Read, Glob and Grep, so repo text it reads cannot make it run anything, though it can still Read any file on disk (agent files cannot limit paths). It reads the code as a

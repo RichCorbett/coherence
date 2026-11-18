@@ -36,10 +36,13 @@ export class ReviewInputCommand extends BaseCommand {
     const tooLong = patchLines > PASTE_LIMIT_LINES || (patch !== undefined && Buffer.byteLength(patch) > PASTE_LIMIT_BYTES);
     const patchFile = patch !== undefined && tooLong ? await this.keep(patch) : undefined;
 
-    const header = [`BASE ${baseId ?? "none"}`, `HEAD ${headId}`, `BRANCH ${(await repo.currentBranch()) ?? "none"}`];
+    // With no base, origin's default branch stands in for the shared taste; the skill passes this commit to quotes, so both read one copy.
+    const tasteBase = baseId ?? (await repo.defaultBranchCommit());
+    const header = [`BASE ${baseId ?? "none"}`, `HEAD ${headId}`, `BRANCH ${(await repo.currentBranch()) ?? "none"}`, `SHARED TASTE ${tasteBase ?? "none"}`];
     if (patchFile) header.push(`The full diff is ${patchLines} lines, too long to paste (over ${PASTE_LIMIT_LINES} lines or ${PASTE_LIMIT_BYTES / 1024} KB). Read it in chunks from ${patchFile}`);
     invocation.print(header.join("\n"));
-    const shared = baseId === undefined ? undefined : await readSharedTaste(repo, baseId);
+    if (tasteBase === undefined) invocation.printError("coherence review-input: no default branch is known (origin/HEAD), so the repo's shared taste is not read; git remote set-head origin --auto sets it");
+    const shared = await readSharedTaste(repo, tasteBase);
     invocation.print(`=== OWNER TASTE ===\n${(await readTaste(shared)).trimEnd()}`);
     const fresh = await readNewTaste();
     const since = fresh.since === undefined ? "no previous review is recorded, so this is every entry" : `dated ${fresh.since} or later, the day of the previous review`;
