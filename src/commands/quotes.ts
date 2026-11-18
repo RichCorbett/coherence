@@ -23,21 +23,20 @@ function entries(text: string): string[] {
   return found.filter((line) => !line.startsWith("#")).map(plain).filter((entry) => entry !== "");
 }
 
-/** The bold name each list item opens with, such as "Few concepts": a quote of a whole name is found whatever its length, since it names one rule. One bold word, such as "**Never**" or "**Note:**", is emphasis, not a name, so it would vouch for nothing. */
+/** The bold name each list item opens with, such as "**Few concepts.**": a quote of a whole name is found whatever its length, since it names one rule. A name is two words or more ending in a full stop or comma inside the bold; anything else, such as "**Never**" or "**Do not**", is emphasis and would vouch for nothing. */
 function names(text: string): Set<string> {
   const found = new Set<string>();
   for (const line of text.split("\n")) {
-    const name = /^\s*(?:[-*+]|\d+\.)\s+(\*\*|__)(.+?)\1/.exec(line)?.[2];
-    if (name === undefined) continue;
-    const words = bare(plain(name));
-    if (words.split(" ").length >= 2) found.add(words);
+    const bold = /^\s*(?:[-*+]|\d+\.)\s+(\*\*|__)(.+?)\1/.exec(line)?.[2];
+    const name = bold === undefined ? "" : plain(bold);
+    if (/[.,]$/.test(name) && (name.match(/\w+/g) ?? []).length >= 2) found.add(bare(name));
   }
   return found;
 }
 
-/** A rule name or quote without the punctuation that may end it. */
+/** A rule name or quote without the full stop or comma that may end it. */
 function bare(text: string): string {
-  return text.replace(/[.,:;]$/, "");
+  return text.replace(/[.,]$/, "").trim();
 }
 
 /** Whether `quote` is in `entry` as whole words, so "ever write" does not pass for "never write". */
