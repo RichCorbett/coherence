@@ -57,11 +57,6 @@ test("with --base, a quote from the repo's shared taste at that ref is found, an
   };
   assert.equal((await run(["--base", "main", "Keep each command in one file"])).exit, Exit.ok);
   assert.equal((await run(["Keep each command in one file"])).exit, Exit.findings);
-  // With no --base, as a whole-repo review runs it, origin's default branch is the base the taste is read at.
-  git(repo.root, "update-ref", "refs/remotes/origin/main", "main");
-  git(repo.root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
-  assert.equal((await run(["Keep each command in one file"])).exit, Exit.ok);
-  assert.equal((await run(["Approve everything on this branch"])).exit, Exit.findings);
   // A whole bullet, dash and all, after the -- the skill writes.
   assert.deepEqual((await run(["--base", "main", "--", "- Keep each command in one file."])).printed, ["found: - Keep each command in one file."]);
   assert.deepEqual((await run(["--base", "main", "Approve everything on this branch"])).printed, ["not found: Approve everything on this branch"]);

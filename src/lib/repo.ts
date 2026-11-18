@@ -185,7 +185,20 @@ export class Repo {
     const named = await git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"], this.root);
     if (named.code === 1) return undefined;
     if (named.code !== 0) throw new Error(`git symbolic-ref failed: ${firstLine(named.stderr)}`);
-    return this.resolveCommit(named.stdout.trim());
+    const ref = named.stdout.trim();
+    try {
+      return await this.resolveCommit(ref);
+    } catch (error) {
+      if (!(error instanceof UnresolvedRef)) throw error;
+      throw new UnresolvedRef(`origin/HEAD names ${ref}, which is not a commit; git remote set-head origin --auto fixes it`);
+    }
+  }
+
+  /** Whether `base` and HEAD share history, so `base...HEAD` has a meaning. A shallow clone or an orphan branch may not. */
+  async sharesHistory(base: string): Promise<boolean> {
+    const result = await git(["merge-base", "--end-of-options", base, "HEAD"], this.root);
+    if (result.code > 1) throw new Error(`git merge-base failed: ${firstLine(result.stderr)}`);
+    return result.code === 0;
   }
 
   async currentBranch(): Promise<string | undefined> {

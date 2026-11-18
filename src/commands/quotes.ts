@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { BaseCommand, Exit, type Invocation } from "../lib/base-command.ts";
 import { readPluginFile } from "../lib/plugin-files.ts";
 import { Repo } from "../lib/repo.ts";
-import { readSharedTaste, readTaste, sharedTasteBase } from "../lib/taste.ts";
+import { readSharedTaste, readTaste } from "../lib/taste.ts";
 
 // A shorter quote, such as "one way", is found in almost any text, so it would vouch for nothing.
 const MIN_WORDS = 4;
@@ -32,7 +32,7 @@ function holds(entry: string, quote: string): boolean {
 export class QuotesCommand extends BaseCommand {
   readonly name = "quotes";
   readonly usage =
-    "coherence quotes [--base <ref>] [--] '<quoted rule>'...  (exits 1 when any quote is not found word for word in the rules or taste; the repo's shared taste counts too, as committed at --base or else on origin's default branch)";
+    "coherence quotes [--base <ref>] [--] '<quoted rule>'...  (exits 1 when any quote is not found word for word in the rules or taste; with --base, the repo's shared taste at that ref counts too)";
 
   async execute(invocation: Invocation): Promise<number> {
     const { values, positionals } = parseArgs({ args: invocation.args, options: { base: { type: "string" } }, allowPositionals: true });
@@ -40,9 +40,8 @@ export class QuotesCommand extends BaseCommand {
       invocation.printError(`usage: ${this.usage}`);
       return Exit.usage;
     }
-    // Outside a repo there is no shared taste to count, and with no --base it is read where a whole-repo review reads it.
-    const repo = values.base === undefined ? await Repo.open(invocation.cwd).catch(() => undefined) : await Repo.open(invocation.cwd);
-    const shared = repo && (await readSharedTaste(repo, await sharedTasteBase(repo, values.base)));
+    const repo = values.base === undefined ? undefined : await Repo.open(invocation.cwd);
+    const shared = repo && values.base !== undefined ? await readSharedTaste(repo, await repo.resolveCommit(values.base)) : undefined;
     const standard = entries(`${await readPluginFile("rules/design.md")}\n${await readTaste(shared)}`);
     let missing = 0;
     for (const arg of positionals) {
