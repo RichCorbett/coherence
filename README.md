@@ -2,7 +2,7 @@
 
 AI coding agents write code that works and doesn't look good: too many files, helpers written next to ones that already exist, a simple task overbuilt, and no idea holding it together.
 
-coherence is a Claude Code plugin that checks whether agent-written code reads as if one person wrote it. It does not write code. It runs deterministic checks, has one reader judge a whole repo's design, remembers your design preferences, prints the design rules, and gates pull requests on the checks.
+coherence is a Claude Code plugin that checks whether agent-written code conforms to the repo it lands in instead of reading like bot slop: reinvented helpers, foreign error styles, layers nobody needed, comments that narrate. It does not write code. It runs deterministic checks, has one reader judge a whole repo's design, remembers your design preferences, prints the design rules, and gates pull requests on the checks.
 
 Early, version 0.1. It's small, and the limits are listed below.
 
