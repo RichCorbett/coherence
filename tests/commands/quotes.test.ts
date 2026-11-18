@@ -9,7 +9,7 @@ import { fakeInvocation, git, tempRepo } from "../helpers/temp-repo.ts";
 
 const PLUGIN = {
   "rules/design.md": "# How code must be designed\n\n- **One voice.** Reuse what exists;\n  never write a second one beside it.\n- **Dependencies go one way** between modules.\n- **Few concepts.** A handful of ideas, reused.\n",
-  "taste/style.md": "# Style\n\n- Prefer plain words over clever ones.\n- Don't split a file that reads well whole.\n- Keep **every** helper beside its one caller.\n",
+  "taste/style.md": "# Style\n\n- Prefer plain words over clever ones.\n- Don't split a file that reads well whole.\n- Keep **every** helper beside its one caller.\n- **Plain words,** over clever.\n- **Never** add a dependency without asking.\n- **Note:** this is a note.\n- __init__.py files stay empty.\n- **.** odd\n",
 };
 
 async function quotes(t: TestContext, args: string[]) {
@@ -45,6 +45,12 @@ test("a rule's whole bold name is found however short, and part of one or a shor
   const { exit, printed } = await quotes(t, ['"Few concepts"', "Few concepts.", "One voice", "**Few concepts.**", "Few", "concepts", "One", "A handful", "Few ideas", "every"]);
   assert.equal(exit, Exit.findings);
   assert.deepEqual(printed.map((line) => line.split(":")[0]), ["found", "found", "found", "found", "not found", "not found", "not found", "not found", "not found", "not found"]);
+});
+
+test("a taste bullet's bold name is found without its comma, and one bold word or an empty name is not a name", async (t) => {
+  const { exit, printed } = await quotes(t, ["Plain words", "Plain words,", "Never", "Note", "init", "", "."]);
+  assert.equal(exit, Exit.findings);
+  assert.deepEqual(printed.map((line) => line.split(":")[0]), ["found", "found", "not found", "not found", "not found", "not found", "not found"]);
 });
 
 test("needs at least one quote", async (t) => {
