@@ -46,12 +46,20 @@ export function git(args: string[], cwd: string): Promise<ProcessResult> {
   return runProcess("git", [...REFUSE_PLANTED_REPOSITORIES, ...args], cwd);
 }
 
-// A ref from a person or a skill is checked before git sees it, so it can never pass for an option or carry shell syntax along.
-const SAFE_REF = /^[A-Za-z0-9._/-]+$/;
-
-/** True for a ref that is plainly a name: it can never pass for an option or carry shell syntax. */
-export function isUsableRef(ref: string): boolean {
-  return !ref.startsWith("-") && SAFE_REF.test(ref);
+/**
+ * True for a ref that is plainly a name, by git's own rule for branch names, so it can never pass for an option, a glob or a
+ * revision expression. It reaches git as one argument with no shell, so `$`, `;` or a quote in it carries nothing along.
+ * `@` alone passes that rule but means HEAD to rev-parse, so it is refused. git's rule lets through control, bidi and
+ * zero-width characters, which would hide what a refusal that echoes the name says, so those are refused too.
+ * Throws when git itself fails, so a broken git is never reported as a bad name.
+ */
+export async function isUsableRef(ref: string, cwd: string): Promise<boolean> {
+  if (ref === "HEAD") return true;
+  if (ref.startsWith("-") || ref === "@" || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(ref)) return false;
+  // Without --branch, git exits 1 for a name it refuses and above 1 when it could not run, and never expands @{-1}.
+  const result = await git(["check-ref-format", `refs/heads/${ref}`], cwd);
+  if (result.code > 1) throw new Error(`git check-ref-format failed: ${firstLine(result.stderr)}`);
+  return result.code === 0;
 }
 
 /** A full commit ID, never an abbreviation that could come to name a different commit. */
@@ -139,7 +147,7 @@ export class Repo {
 
   /** The commit ID `ref` names. Throws on a ref that is not plainly a name, or that is not a commit, and on a git failure. */
   async resolveCommit(ref: string): Promise<string> {
-    if (!isUsableRef(ref)) throw new UnresolvedRef(`not a usable ref name: ${ref.slice(0, 80)}`);
+    if (!(await isUsableRef(ref, this.root))) throw new UnresolvedRef(`not a usable ref name: ${ref.slice(0, 80)}`);
     // With -q, git exits 1 when the ref names no commit and any other non-zero code when git itself failed.
     const result = await git(["rev-parse", "--verify", "-q", "--end-of-options", `${ref}^{commit}`], this.root);
     if (result.code === 1) throw new UnresolvedRef(`${ref} is not a commit`);
@@ -224,7 +232,7 @@ export class Repo {
    */
   async remoteBranchCommits(branch: string): Promise<[string, string][]> {
     // A pattern, so the name must be plain: a glob character in it would match other branches.
-    if (!isUsableRef(branch)) throw new Error(`not a usable branch name: ${branch.slice(0, 80)}`);
+    if (!(await isUsableRef(branch, this.root))) throw new Error(`not a usable branch name: ${branch.slice(0, 80)}`);
     const config = await git(["for-each-ref", "--format=%(refname)%00%(upstream)%00%(upstream:remotename)%00%(push)%00%(push:remotename)", `refs/heads/${branch}`], this.root);
     if (config.code !== 0) throw new Error(`git for-each-ref failed: ${firstLine(config.stderr)}`);
     const [, upstream = "", upstreamRemote = "", push = "", pushRemote = ""] = config.stdout.split("\n").find((line) => line.startsWith(`refs/heads/${branch}\0`))?.split("\0") ?? [];

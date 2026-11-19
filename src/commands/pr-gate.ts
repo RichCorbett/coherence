@@ -168,7 +168,7 @@ export class PrGateCommand extends BaseCommand {
     if (named.length > 1) return "the PR's base is named more than once. Name it once, with --base <branch>";
     const base = named[0][1] ?? "";
     // gh's --base is always a branch, so only the local branch of that name counts; a tag or a commit ID that git would find first does not.
-    if (!isUsableRef(base)) return `the PR's base ${base.slice(0, 80)} is not a plain branch name. ${again}`;
+    if (!(await isUsableRef(base, repo.root))) return `the PR's base ${base.slice(0, 80)} is not a plain branch name. ${again}`;
     const baseId = await repo.branchCommit(base);
     if (!baseId) return `the PR's base ${base} has no local branch here, so the gate cannot tell whether the review read this diff. Fetch or create the local branch ${base}, then open the PR again`;
     if (baseId !== reviewed) return `branch ${branch} was reviewed against ${short}, but the PR's base ${base} is ${baseId.slice(0, 8)}, so the PR holds changes the review never read. ${again}`;
@@ -185,7 +185,7 @@ export class PrGateCommand extends BaseCommand {
     if (typeof options === "string") return this.refusePass(invocation, options, Exit.usage);
     const { branch, verdict, head, base } = options;
     if (branch === undefined) return this.refusePass(invocation, "it needs --branch, the branch that was reviewed", Exit.usage);
-    if (!isUsableRef(branch)) return this.refusePass(invocation, `--branch is not a usable branch name: ${branch.slice(0, 80)}`, Exit.usage);
+    if (!(await isUsableRef(branch, invocation.cwd))) return this.refusePass(invocation, `--branch is not a usable branch name: ${branch.slice(0, 80)}`, Exit.usage);
     const repo = await Repo.open(invocation.cwd);
     await revokeReview(repo, branch);
 

@@ -484,6 +484,28 @@ test("pass with a --base that git cannot read fails as a git failure, not as a b
   assert.equal(recorded(repo.root, "coherence-reviewed"), undefined);
 });
 
+test("a branch name git accepts, such as one with + or @, can be reviewed and its review revoked", async () => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  for (const branch of ["feat+x", "fix@home"]) {
+    git(repo.root, "checkout", "-q", "-b", branch);
+    assert.equal(await pass(repo.root), Exit.ok, branch);
+    assert.ok(recorded(repo.root, "coherence-reviewed", branch), branch);
+    const declined = await passWith(repo.root, ["--branch", branch, "--verdict", "rework", "--head", git(repo.root, "rev-parse", "HEAD")]);
+    assert.notEqual(declined.code, Exit.ok, branch);
+    assert.equal(recorded(repo.root, "coherence-reviewed", branch), undefined, branch);
+  }
+});
+
+test("when git cannot check a branch name, pass fails as a git failure, not as a bad name", async (t) => {
+  const repo = await tempRepo({ "a.ts": "x\n" });
+  git(repo.root, "checkout", "-q", "-b", "feature");
+  const args = mergeOfHead(repo.root);
+  const broken = join(tempFolder(), "gitconfig");
+  writeFileSync(broken, "[broken\n");
+  setEnv(t, { GIT_CONFIG_GLOBAL: broken });
+  await assert.rejects(passWith(repo.root, args), /git check-ref-format failed: fatal: bad config line 1/);
+});
+
 test("pass refuses without a branch, a verdict or a head, or with a branch name that is not plainly a name", async () => {
   const repo = await tempRepo({ "a.ts": "x\n" });
   git(repo.root, "checkout", "-q", "-b", "feature");
@@ -491,7 +513,12 @@ test("pass refuses without a branch, a verdict or a head, or with a branch name 
   const cases: [string[], RegExp][] = [
     [["--verdict", "merge", "--head", head], /refused: it needs --branch/],
     [["--branch=-c", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: -c/],
-    [["--branch", "a;b", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: a;b/],
+    [["--branch", "a b", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: a b/],
+    [["--branch", "a*", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: a\*/],
+    [["--branch", "@", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: @/],
+    [["--branch", "@{-1}", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: @\{-1\}/],
+    [["--branch", "a\u202eb", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: a\u202eb/],
+    [["--branch", "a\u200bb", "--verdict", "merge", "--head", head], /--branch is not a usable branch name: a\u200bb/],
     [["--branch", "feature"], /refused: it needs --verdict and --head/],
     [["--branch", "feature", "--head", head], /refused: it needs --verdict and --head/],
     [["--branch", "feature", "--verdict", "merge"], /refused: it needs --verdict and --head/],
