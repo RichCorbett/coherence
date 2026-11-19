@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.config/coherence-loop/bin/loop/hooks/stop-route-questions.ts\"", "timeout": 15 },
+          { "type": "command", "command": "node \"$HOME/.config/coherence-loop/bin/loop/hooks/stop-work-order.ts\"", "timeout": 45 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.config/coherence-loop/bin/loop/hooks/pretooluse-work-order.ts\"", "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}

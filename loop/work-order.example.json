@@ -1,0 +1,33 @@
+{
+  "id": "WO-2026-11-19-01",
+  "repo": "RichCorbett/coherence",
+  "workdir": "~/Library/Mobile Documents/com~apple~CloudDocs/Projects/greg/coherence",
+  "base": "main",
+  "expires": "2026-11-26T23:59:00-05:00",
+  "limits": { "stopsWithoutProgress": 3, "blocksPerSession": 30 },
+  "items": [
+    {
+      "issue": 66,
+      "title": "Block the agent from editing its own gate and track a trend",
+      "branch": "feat/66-*",
+      "ops": ["merge_main", "push_main", "close_issue", "eval"],
+      "evalRunsPerCall": 1,
+      "evalCalls": 2
+    },
+    {
+      "issue": 67,
+      "title": "Run config-executing tools only on repos the owner trusts",
+      "branch": "feat/67-*",
+      "ops": ["merge_main", "push_main", "close_issue", "eval"],
+      "after": [66],
+      "evalRunsPerCall": 1,
+      "evalCalls": 2
+    },
+    {
+      "issue": 58,
+      "title": "Warn after an edit when a new name already exists elsewhere",
+      "branch": "feat/58-*",
+      "ops": ["merge_main", "push_main", "close_issue"]
+    }
+  ]
+}
