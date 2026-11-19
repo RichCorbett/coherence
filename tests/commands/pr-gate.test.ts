@@ -821,6 +821,16 @@ test("a word coherence cannot read as an option is refused, since what follows i
   }
 });
 
+test("an unknown option's refusal names the gh the option table was copied from, since a later gh may have added it", async () => {
+  const repo = await reviewedRepo();
+  for (const [command, unknown] of [["gh pr create --fill --some-new-flag", "--some-new-flag"], ["gh pr create --new=x", "--new=x"], ["gh pr create -dz", "-dz"]]) {
+    assert.match(refusal(await runHook(repo.root, command)), new RegExp(`cannot read ${unknown} .* copied from gh 2\\.103\\.2, so an option added in a later gh is refused too`), command);
+  }
+  for (const command of ["gh pr create stray --fill", "gh pr create - --fill", "gh pr create -- --fill", "gh pr create --recover state.json", "gh pr create --recover=state.json"]) {
+    assert.doesNotMatch(refusal(await runHook(repo.root, command)), /copied from gh/, command);
+  }
+});
+
 test("a head attached to -H is read the way gh reads it", async () => {
   const repo = await reviewedIntegrationBranch();
   git(repo.root, "checkout", "-q", "main");

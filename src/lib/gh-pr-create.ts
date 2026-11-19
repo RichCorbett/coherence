@@ -60,7 +60,9 @@ const ONE_COMMAND =
   "with nothing before gh, no other commands, and no variables, substitutions or wildcards; " +
   `a --body may be "$(cat <<'EOF' ... EOF)". A line that says eval or sh -c anywhere, even in quoted text, and names gh or pr counts too`;
 
-/** gh pr create's options by short and long name, with the -R it inherits, as `gh pr create --help` lists them on gh 2.103.2. */
+/** The gh whose `gh pr create --help` the option tables below copy. */
+const GH_VERSION = "2.103.2";
+/** gh pr create's options by short and long name, with the -R it inherits, as `gh pr create --help` lists them on GH_VERSION. */
 const TAKES_VALUE = new Map([["a", "assignee"], ["B", "base"], ["b", "body"], ["F", "body-file"], ["H", "head"], ["l", "label"], ["m", "milestone"], ["p", "project"], ["r", "reviewer"], ["R", "repo"], ["T", "template"], ["t", "title"]]);
 /** `--recover` is left out on purpose: it restores the inputs of a failed run from a file, which can name another head, so the gate refuses it. */
 const TAKES_VALUE_LONG = new Set([...TAKES_VALUE.values(), "attach"]);
@@ -112,7 +114,12 @@ export function prOptions(raw: string): { args: string[] } | { why: string } {
   }
   const args = words.slice(3);
   const { found, unknown } = options(args);
-  if (unknown) return { why: `coherence cannot read ${unknown === HEREDOC_TEXT ? "a substitution" : unknown} as an option of gh pr create, so it cannot tell which branch the PR names. ${ONE_COMMAND}` };
+  if (unknown === HEREDOC_TEXT) return { why: `coherence cannot read a substitution as an option of gh pr create, so it cannot tell which branch the PR names. ${ONE_COMMAND}` };
+  if (unknown) {
+    // An option-shaped word may be one a later gh added; --recover is refused on purpose, so the table is not stale for it.
+    const stale = /^--?[^-]/.test(unknown) && unknown.split("=")[0] !== "--recover" ?` Its option table is copied from gh ${GH_VERSION}, so an option added in a later gh is refused too.` : "";
+    return { why: `coherence cannot read ${unknown} as an option of gh pr create, so it cannot tell which branch the PR names.${stale} ${ONE_COMMAND}` };
+  }
   if (found.some(([name, value]) => value === HEREDOC_TEXT && name !== "body")) return { why: `only --body may be a substitution. ${ONE_COMMAND}` };
   if (found.some(([name]) => name === "repo")) return { why: `--repo points gh at a repository the gate did not check. ${ONE_COMMAND}` };
   if (found.filter(([name]) => name === "head").length > 1) return { why: "the PR's head is named more than once. Name it once, with --head <branch>" };
