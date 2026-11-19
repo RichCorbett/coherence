@@ -98,7 +98,11 @@ test("ordinary commands are let through, and a mention of gh pr create, even in 
   }
   // Recognition reads the raw text, so it cannot tell a mention from a hidden command; a mention is the false deny this costs.
   for (const command of [`git commit -m "document gh pr create"`, `echo 'gh pr create'`, `grep -rn "gh pr create" src`]) {
-    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command/, command);
+    assert.match(refusal(await runHook(repo.root, command)), /not exactly one gh pr create command.*If the line only mentions gh pr create.*it is refused by design.*leave that text out of the line/, command);
+  }
+  // A real PR line the gate cannot judge is not a mention, so its refusal does not say to leave the text out.
+  for (const command of ["gh pr create --frobnicate", "gh pr create --repo other/repo --fill"]) {
+    assert.doesNotMatch(refusal(await runHook(repo.root, command)), /refused by design/, command);
   }
 });
 

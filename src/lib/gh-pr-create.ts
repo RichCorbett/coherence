@@ -59,6 +59,10 @@ const ONE_COMMAND =
   "the line is not exactly one gh pr create command with fixed words. Run gh pr create on its own, from the repo's folder, " +
   "with nothing before gh, no other commands, and no variables, substitutions or wildcards; " +
   `a --body may be "$(cat <<'EOF' ... EOF)". A line that says eval or sh -c anywhere, even in quoted text, and names gh or pr counts too`;
+/** Only a line that is not a plain PR line can be a mere mention, so only its refusal says what to do about one. */
+const NOT_A_PR_LINE =
+  `${ONE_COMMAND}. If the line only mentions gh pr create, or holds gh in quoted text, such as a search or a commit message, it is refused by design, ` +
+  "since the gate cannot tell a mention from a command: leave that text out of the line, such as with git commit -F and a file";
 
 /** The gh whose `gh pr create --help` the option tables below copy. */
 const GH_VERSION = "2.103.2";
@@ -108,7 +112,7 @@ export function options(words: string[]): { found: [string, string | undefined][
  */
 export function prOptions(raw: string): { args: string[] } | { why: string } {
   const words = staticWords(raw.trim());
-  if (!words || words[0] !== "gh" || words[1] !== "pr" || words[2] !== "create") return { why: ONE_COMMAND };
+  if (!words || words[0] !== "gh" || words[1] !== "pr" || words[2] !== "create") return { why: NOT_A_PR_LINE };
   for (const name of ["GH_REPO", "GH_HOST"]) {
     if (process.env[name]) return { why: `${name} is set in the environment, so gh may open the PR somewhere other than this folder's repository. Unset ${name}, then open the PR again` };
   }
